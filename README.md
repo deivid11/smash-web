@@ -1,5 +1,7 @@
 # Smash Web · Port Lab
 
+**▶ Play in your browser: <https://smashw.com/play>** — bring your own legally obtained Melee disc image (USA v1.02); it is read on your device and never uploaded.
+
 ![Smash Web mode-selection screen](docs/images/mode-select.png)
 
 *Example local installation. Available fighters and stages depend on supplied discs and optional packs; this is a limited prototype, not the complete Melee engine.*
