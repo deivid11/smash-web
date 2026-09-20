@@ -28,7 +28,11 @@ describe('keyboard map', () => {
     expect(parseKeyboardMap(null)).toBeNull(); expect(parseKeyboardMap({ v: 2, players: [] })).toBeNull(); expect(parseKeyboardMap({ v: 1, players: [{}] })).toBeNull();
     const parsed = parseKeyboardMap({ v: 1, players: [{ jump: ['KeyQ', 'Escape', 42, 'KeyQ'], attack: ['KeyQ', 'KeyE'], evil: ['KeyZ'] }, { jump: ['KeyE', 'KeyR'] }] })!;
     expect(parsed[0].jump).toEqual(['KeyQ']); expect(parsed[0].attack).toEqual(['KeyE']); expect(parsed[1].jump).toEqual(['KeyR']);
-    expect(parsed[0].left).toEqual([]); expect('evil' in parsed[0]).toBe(false);
+    expect('evil' in parsed[0]).toBe(false);
+    // An action the stored map never mentions (taunt, in maps saved before it existed) keeps
+    // its default keys; one stored as an empty list stays deliberately unbound.
+    expect(parsed[0].left).toEqual(['KeyA']); expect(parsed[0].taunt).toEqual(['KeyT']); expect(parsed[1].taunt).toEqual(['KeyB', 'Numpad3']);
+    expect(parseKeyboardMap({ v: 1, players: [{ jump: ['KeyQ'], taunt: [] }, { jump: ['KeyR'] }] })![0].taunt).toEqual([]);
   });
   it('persists only customized maps and restores defaults', () => {
     const storage = memoryStorage();

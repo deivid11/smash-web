@@ -7,9 +7,9 @@ export interface PadRecord {
   readonly buttons: readonly PadButton[]; readonly axes: readonly number[];
 }
 export type ControllerFamily = 'xbox' | 'playstation' | 'nintendo' | 'gamesir' | 'wii' | 'unknown';
-export const ACTIONS = ['jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk', 'left', 'right', 'up', 'down'] as const;
+export const ACTIONS = ['jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk', 'taunt', 'left', 'right', 'up', 'down'] as const;
 export type ControllerAction = typeof ACTIONS[number];
-export const ACTION_LABELS: Record<ControllerAction, string> = { jump: 'Jump', attack: 'Quick attack', strong: 'Strong attack', special: 'Special', shield: 'Shield / dodge', grab: 'Grab', walk: 'Walk modifier', left: 'D-pad left', right: 'D-pad right', up: 'D-pad up', down: 'D-pad down' };
+export const ACTION_LABELS: Record<ControllerAction, string> = { jump: 'Jump', attack: 'Quick attack', strong: 'Strong attack', special: 'Special', shield: 'Shield / dodge', grab: 'Grab', walk: 'Walk modifier', taunt: 'Taunt', left: 'D-pad left', right: 'D-pad right', up: 'D-pad up', down: 'D-pad down' };
 export interface AxisBinding { index: number; sign: 1 | -1; center: number }
 export interface ControllerMapping {
   version: 1;
@@ -25,11 +25,12 @@ const REQUIRED: readonly ControllerAction[] = ['jump', 'attack', 'strong', 'spec
 const STANDARD_LABELS = ['South', 'East', 'West', 'North', 'Left shoulder', 'Right shoulder', 'Left trigger', 'Right trigger', 'Select / view', 'Start / menu', 'Left stick click', 'Right stick click', 'D-pad up', 'D-pad down', 'D-pad left', 'D-pad right', 'Home'];
 /** Smash layout by standard position: South (Xbox A / Cross) attacks, East (B /
  * Circle) is special, West + North (X / Y) jump, both bumpers grab, both
- * triggers shield, the right stick smashes and R3 is the spare Strong button.
+ * triggers shield, the right stick smashes, R3 is the spare Strong button and
+ * Select / View taunts (the original's D-pad is movement here).
  * Nintendo pads label their positions differently (A east, B south), so
  * {@link standardMapping} swaps attack/special to keep "A attacks, B specials". */
-const STANDARD_BUTTONS: Record<ControllerAction, number[]> = {jump: [2, 3], attack: [0], strong: [11], special: [1], shield: [6, 7], grab: [4, 5], walk: [], left: [14], right: [15], up: [12], down: [13]};
-export const emptyControllerInput = (): PlayerInput => ({x: 0, y: 0, jump: false, attack: false, strong: false, special: false, shield: false, grab: false, walk: false, down: false, cX: 0, cY: 0});
+const STANDARD_BUTTONS: Record<ControllerAction, number[]> = {jump: [2, 3], attack: [0], strong: [11], special: [1], shield: [6, 7], grab: [4, 5], walk: [], taunt: [8], left: [14], right: [15], up: [12], down: [13]};
+export const emptyControllerInput = (): PlayerInput => ({x: 0, y: 0, jump: false, attack: false, strong: false, special: false, shield: false, grab: false, walk: false, taunt: false, down: false, cX: 0, cY: 0});
 export function emptyMapping(): ControllerMapping {
   return {version: 1, axes: {x: null, y: null, cx: null, cy: null}, buttons: Object.fromEntries(ACTIONS.map(action => [action, [] as number[]])) as ControllerMapping['buttons'], deadzone: 0.18, threshold: 0.55};
 }
@@ -106,7 +107,9 @@ export function mappingError(value: unknown, pad: Pick<PadRecord, 'buttons' | 'a
   if (new Set(sticks.map(binding => binding.index)).size !== sticks.length) return 'Each stick direction must use a different axis.';
   const used = new Set<number>();
   for (const action of ACTIONS) {
-    const buttons = map.buttons[action];
+    // A missing taunt array (profiles saved before the taunt binding existed) means
+    // "unbound", exactly like the missing smash-stick axes above, never an error.
+    const buttons = map.buttons[action] ?? (action === 'taunt' ? [] : undefined);
     if (!Array.isArray(buttons) || buttons.length > 2) return `Invalid ${ACTION_LABELS[action]} binding.`;
     for (const index of buttons) {
       if (!Number.isInteger(index) || index < 0 || index >= Math.min(64, pad.buttons.length)) return `Button index is unavailable for ${ACTION_LABELS[action]}.`;
@@ -123,7 +126,7 @@ export function cleanMapping(value: ControllerMapping): ControllerMapping {
   const axis = (binding: AxisBinding | null | undefined): AxisBinding | null => binding ? {index: binding.index, sign: binding.sign, center: binding.center} : null;
   const axes = (value.axes ?? {}) as Partial<Record<'x' | 'y' | 'cx' | 'cy', AxisBinding | null>>;
   return {version: 1, axes: {x: axis(axes.x), y: axis(axes.y), cx: axis(axes.cx), cy: axis(axes.cy)},
-    buttons: Object.fromEntries(ACTIONS.map(action => [action, [...value.buttons[action]]])) as ControllerMapping['buttons'], deadzone: value.deadzone, threshold: value.threshold};
+    buttons: Object.fromEntries(ACTIONS.map(action => [action, [...(value.buttons[action] ?? [])]])) as ControllerMapping['buttons'], deadzone: value.deadzone, threshold: value.threshold};
 }
 export function pressed(button: PadButton | undefined, threshold = 0.55): boolean {
   return !!button && (button.pressed === true || (Number.isFinite(button.value) && button.value >= threshold));
@@ -144,7 +147,7 @@ export function mappedInput(pad: Pick<PadRecord, 'buttons' | 'axes'>, mapping: C
   const digitalX = +held('right') - +held('left'), digitalY = +held('up') - +held('down');
   const x = digitalX || axisValue(pad.axes, mapping.axes.x, mapping.deadzone), y = digitalY || axisValue(pad.axes, mapping.axes.y, mapping.deadzone);
   const axes = (mapping.axes ?? {}) as Partial<Record<'cx' | 'cy', AxisBinding | null>>;
-  return {x, y, down: y < -0.66, jump: held('jump'), attack: held('attack'), strong: held('strong'), special: held('special'), shield: held('shield'), grab: held('grab'), walk: held('walk'),
+  return {x, y, down: y < -0.66, jump: held('jump'), attack: held('attack'), strong: held('strong'), special: held('special'), shield: held('shield'), grab: held('grab'), walk: held('walk'), taunt: held('taunt'),
     cX: axisValue(pad.axes, axes.cx ?? null, mapping.deadzone), cY: axisValue(pad.axes, axes.cy ?? null, mapping.deadzone)};
 }
 /** Capability/model-family key only: no raw device ID, serial number, address or user identity. */

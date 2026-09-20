@@ -233,7 +233,7 @@ describe('ControllerHub local assignments, discovery, safe calibration and persi
     expect(valid.devices()[0]!.mapping).not.toHaveProperty('unrelated');
     const key = valid.devices()[0]!.key; valid.hub.beginCalibration(key); valid.hub.saveCalibration(key);
     expect(valid.storage.getItem()).not.toContain('discard-'); expect(valid.storage.getItem()).not.toContain('privateNote');
-    expect(ACTIONS).toHaveLength(11);
+    expect(ACTIONS).toHaveLength(12);
   });
 });
 

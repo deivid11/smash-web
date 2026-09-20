@@ -1,4 +1,5 @@
-/** Binary controller frames for the room relay (protocol v8).
+/** Binary controller frames for the room relay (introduced in protocol v8; the taunt bit
+ * of byte 1 arrived with v11).
  *
  * A JSON input frame costs ~330 bytes sixty times a second per human; the same frame is
  * 13-15 bytes here, and a whole match log replays to a reconnecting browser in a few KiB.
@@ -6,7 +7,8 @@
  *
  * Input payload (self-delimiting, canonical, identical for every peer):
  *   byte 0  buttons   bit0 jump · 1 attack · 2 strong · 3 down · 4 special · 5 shield · 6 grab · 7 walk
- *   byte 1  direction 0 none · 1 neutral · 2 side · 3 up · 4 down (upper bits reserved, zero)
+ *   byte 1  direction 0 none · 1 neutral · 2 side · 3 up · 4 down in bits 0-2, taunt in bit 7
+ *             (bits 3-6 reserved, zero: any of them set is rejected with the direction)
  *   byte 2  axes      two bits each for x, y, cX, cY: 0 → 0 · 1 → +1 · 2 → -1 · 3 → float64 follows
  *   then one little-endian float64 per axis coded 3, in x, y, cX, cY order.
  * Exact doubles keep the simulation bit-identical with the JSON path; digital inputs
@@ -52,7 +54,7 @@ export function encodeInputPayload(input: NetInput): Uint8Array {
   });
   const bytes = new Uint8Array(3 + floats.length * 8);
   bytes[0] = (input.jump ? 1 : 0) | (input.attack ? 2 : 0) | (input.strong ? 4 : 0) | (input.down ? 8 : 0) | (input.special ? 16 : 0) | (input.shield ? 32 : 0) | (input.grab ? 64 : 0) | (input.walk ? 128 : 0);
-  bytes[1] = Math.max(0, DIRECTIONS.indexOf(input.specialDirection));
+  bytes[1] = Math.max(0, DIRECTIONS.indexOf(input.specialDirection)) | (input.taunt ? 0x80 : 0);
   bytes[2] = axes;
   const view = new DataView(bytes.buffer);
   floats.forEach((value, index) => view.setFloat64(3 + index * 8, value, true));
@@ -61,7 +63,7 @@ export function encodeInputPayload(input: NetInput): Uint8Array {
 
 /** Byte length of the payload starting at `offset`, or -1 when truncated/invalid. */
 export function inputPayloadLength(bytes: Uint8Array, offset: number): number {
-  if (offset + 3 > bytes.length || bytes[offset + 1]! > 4) return -1;
+  if (offset + 3 > bytes.length || (bytes[offset + 1]! & 0x7f) > 4) return -1;
   let floats = 0;
   for (let index = 0, axes = bytes[offset + 2]!; index < 4; index++, axes >>= 2) if ((axes & 3) === 3) floats++;
   const length = 3 + floats * 8;
@@ -73,7 +75,7 @@ export function inputPayloadLength(bytes: Uint8Array, offset: number): number {
 
 /** Caller validated the payload with inputPayloadLength. Always the full canonical record. */
 export function decodeInputPayload(bytes: Uint8Array, offset = 0): NetInput {
-  const buttons = bytes[offset]!, direction = DIRECTIONS[bytes[offset + 1]!];
+  const buttons = bytes[offset]!, flags = bytes[offset + 1]!, direction = DIRECTIONS[flags & 0x7f];
   const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
   const values = [0, 0, 0, 0];
   for (let index = 0, axes = bytes[offset + 2]!, cursor = 3; index < 4; index++, axes >>= 2) {
@@ -81,7 +83,7 @@ export function decodeInputPayload(bytes: Uint8Array, offset = 0): NetInput {
     if (code === 3) { values[index] = view.getFloat64(cursor, true) || 0; cursor += 8; } else values[index] = code === 1 ? 1 : code === 2 ? -1 : 0;
   }
   return { x: values[0]!, y: values[1]!, jump: !!(buttons & 1), attack: !!(buttons & 2), strong: !!(buttons & 4), down: !!(buttons & 8),
-    special: !!(buttons & 16), shield: !!(buttons & 32), grab: !!(buttons & 64), walk: !!(buttons & 128), cX: values[2]!, cY: values[3]!,
+    special: !!(buttons & 16), shield: !!(buttons & 32), grab: !!(buttons & 64), walk: !!(buttons & 128), taunt: !!(flags & 0x80), cX: values[2]!, cY: values[3]!,
     ...(direction === undefined ? {} : { specialDirection: direction }) };
 }
 

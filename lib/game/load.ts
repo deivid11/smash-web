@@ -20,6 +20,7 @@ import { ROY_ACTION_KEYS, ROY_MOVES } from './roy-data.ts';
 import { SAMUS_ACTION_KEYS, parseSamusArticles } from './samus-data.ts';
 import { parseLinkHookshot, type HookshotData } from './link-hookshot.ts';
 import { LIGHT_ITEM_MOTIONS, SMASH_ITEM_MOTIONS } from './item-common.ts';
+import { TAUNT_MOTIONS } from './taunt.ts';
 import { PIKACHU_ACTION_KEYS, PIKACHU_MOVES, parsePikachuArticles } from './pikachu-data.ts';
 import { MEWTWO_ACTION_KEYS, MEWTWO_MOVES, parseMewtwoArticles } from './mewtwo-data.ts';
 import { clampCostumeIndex, costumeModelFile, nanaCostumeFile } from './costumes.ts';
@@ -489,6 +490,12 @@ async function loadOriginalFighter(session: HsdAssetSession, spec: OriginalFight
     const action = table.find((entry) => entry.name === name);
     if (action && !entries.some((entry) => entry.key === name) && !spec.keyed.some((entry) => entry.key === name)) entries.push({ key: name, action, optional: true });
   }
+  // Appeal (taunt) motions, with their original scripts so the voice cue and graphics
+  // play. Optional: a fighter whose source authors none simply cannot taunt.
+  for (const name of TAUNT_MOTIONS) {
+    const action = table.find((entry) => entry.name === name);
+    if (action && !entries.some((entry) => entry.key === name) && !spec.keyed.some((entry) => entry.key === name)) entries.push({ key: name, action, optional: true });
+  }
   for(const name of SMASH_ITEM_MOTIONS){
     const key=`${name}4`;if(spec.keyed.some(e=>e.key===key))continue;
     const action=table.filter(a=>a.name===name)[1];if(!action)throw Error(`Missing original smash item throw ${profile.name}/${name}.`);
@@ -519,7 +526,10 @@ async function loadOriginalFighter(session: HsdAssetSession, spec: OriginalFight
     if (Object.values(spec.moves).includes(key)) {
       if (!key.startsWith('Attack100') && !move.events.some((event) => event.type === 'create')) throw new Error(`No supported original attack hitboxes found for ${key}.`);
       attacks.set(key, move);
-    } else if (key.includes('Special') || key.startsWith('Eat') || key.startsWith('LightThrow') || COMBAT_MOTIONS.includes(key) || spec.extraAttacks?.includes(key)) attacks.set(key, move); // includes copied specials (MrSpecialN, FxSpecialN*)
+    } else if (key.includes('Special') || key.startsWith('Eat') || key.startsWith('LightThrow') || COMBAT_MOTIONS.includes(key) || spec.extraAttacks?.includes(key)
+      // A few Appeal scripts author real hitboxes (Luigi's kick, Charizard's flame);
+      // the rest are harmless motions and never enter the attack tables.
+      || ((TAUNT_MOTIONS as readonly string[]).includes(key) && move.events.some((event) => event.type === 'create'))) attacks.set(key, move); // includes copied specials (MrSpecialN, FxSpecialN*)
   }
   // m-ex script sounds are fighter-relative (5000 + n): route them into the fighter's bank.
   if (soundBank !== undefined) for (const move of timelines.values()) for (const event of move.events) if (event.type === 'sound') event.sound = routeAceSound(soundBank, event.sound);

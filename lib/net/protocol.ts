@@ -5,7 +5,9 @@ import { isCustomFighter, validPackIdentities, samePacks, packMismatch, type Cus
 
 /** v3 distinguished socket-owned humans from host-configured CPU seats; v4 adds the CPU level (1-9) per CPU seat; v5 changes the rollback snapshot cadence (keyframed) and hash capture, so v4 and v5 clients must never cross-hash; v6 adds room-scoped WebRTC voice signaling (offer/answer/ICE) relayed peer-to-peer, so v5 and v6 rooms must never mix; v7 adds the visual-only costume index per seat, so v6 and v7 rooms must never mix (a v6 client would render every skin as default); v8 adds binary input frames (lib/net/input-codec.ts), held seats with `resume` after a dropped connection or a browser restart, and a soft `background`, so v7 clients (which expect a drop to close the match) must never join v8 rooms; v9 adds the optional King of the Hill zones in the rules (a v8 client would simulate a stock battle from the same start and desync) and read-only spectators, so v8 and v9 rooms must never mix. */
 /** v10: namespaced installed custom fighters and exact pack-byte identities. */
-export const ROOM_PROTOCOL = 10;
+/** v11 adds the taunt button to the input record and its binary payload bit, so a v10
+ * client (which rejects the new payload byte outright) must never join a v11 room. */
+export const ROOM_PROTOCOL = 11;
 export const ROOM_SOCKET_PATH = '/api/rooms';
 export const MAX_ROOM_PAYLOAD = 4096;
 export const MAX_BUFFERED_BYTES = 256 * 1024;
@@ -34,7 +36,7 @@ export const DEFAULT_ROOM_RULES: Readonly<RoomRules> = Object.freeze({ stage: 'b
 export interface NetInput {
   x: number; jump: boolean; attack: boolean; strong: boolean; down: boolean;
   y?: number; special?: boolean; specialDirection?: 'neutral' | 'side' | 'up' | 'down';
-  shield?: boolean; grab?: boolean; walk?: boolean;
+  shield?: boolean; grab?: boolean; walk?: boolean; taunt?: boolean;
   /** Smash-stick axes (rollback normalizeInput always sends them, default 0). */
   cX?: number; cY?: number;
 }
@@ -146,11 +148,11 @@ export function validRules(value: unknown): value is RoomRules {
   return record(value) && exact(value, ['stage', 'stocks', 'timeSeconds', 'hill']) && (value.hill === undefined || value.hill === 1 || value.hill === 2) && (['battlefield', 'final', 'corneria', 'temple', 'stadium', 'yoshi-story', 'dream-land', 'peach-castle', 'onett', 'mute-city', 'yoshi-island', 'green-greens', 'venom', 'jungle-japes', 'fourside', 'brinstar', 'kongo-jungle', 'fountain-of-dreams', 'mushroom-kingdom'] as readonly string[]).includes(value.stage as string) && integer(value.stocks, 1, 9) && integer(value.timeSeconds, 1, 600);
 }
 export function validNetInput(value: unknown): value is NetInput {
-  if (!record(value) || !exact(value, ['x', 'y', 'jump', 'attack', 'strong', 'down', 'special', 'specialDirection', 'shield', 'grab', 'walk', 'cX', 'cY'])) return false;
+  if (!record(value) || !exact(value, ['x', 'y', 'jump', 'attack', 'strong', 'down', 'special', 'specialDirection', 'shield', 'grab', 'walk', 'taunt', 'cX', 'cY'])) return false;
   if (typeof value.x !== 'number' || !Number.isFinite(value.x) || Math.abs(value.x) > 1) return false;
   if (value.y !== undefined && (typeof value.y !== 'number' || !Number.isFinite(value.y) || Math.abs(value.y) > 1)) return false;
   if (!['jump', 'attack', 'strong', 'down'].every(key => typeof value[key] === 'boolean')) return false;
-  if (!['special', 'shield', 'grab', 'walk'].every(key => value[key] === undefined || typeof value[key] === 'boolean')) return false;
+  if (!['special', 'shield', 'grab', 'walk', 'taunt'].every(key => value[key] === undefined || typeof value[key] === 'boolean')) return false;
   for (const axis of ['cX', 'cY'] as const) if (value[axis] !== undefined && (typeof value[axis] !== 'number' || !Number.isFinite(value[axis] as number) || Math.abs(value[axis] as number) > 1)) return false;
   return value.specialDirection === undefined || ['neutral', 'side', 'up', 'down'].includes(value.specialDirection as string);
 }

@@ -41,15 +41,15 @@ export function normalizeInput(input: PlayerInput): PlayerInput {
   if (!input || typeof input !== 'object' || !Number.isFinite(input.x) || Math.abs(input.x) > 1 || (input.y !== undefined && (!Number.isFinite(input.y) || Math.abs(input.y) > 1))) throw new RollbackError('Invalid input axes.');
   for (const name of ['cX', 'cY'] as const) if (input[name] !== undefined && (!Number.isFinite(input[name]) || Math.abs(input[name]!) > 1)) throw new RollbackError('Invalid smash-stick axes.');
   for (const name of ['jump', 'attack', 'strong', 'down'] as const) if (typeof input[name] !== 'boolean') throw new RollbackError('Invalid input button.');
-  for (const name of ['special', 'shield', 'grab', 'walk'] as const) if (input[name] !== undefined && typeof input[name] !== 'boolean') throw new RollbackError('Invalid optional input button.');
+  for (const name of ['special', 'shield', 'grab', 'walk', 'taunt'] as const) if (input[name] !== undefined && typeof input[name] !== 'boolean') throw new RollbackError('Invalid optional input button.');
   if (input.specialDirection !== undefined && !['neutral', 'side', 'up', 'down'].includes(input.specialDirection)) throw new RollbackError('Invalid special direction.');
   return { x: input.x || 0, y: input.y || 0, jump: input.jump, attack: input.attack, strong: input.strong, down: input.down,
-    special: input.special ?? false, shield: input.shield ?? false, grab: input.grab ?? false, walk: input.walk ?? false,
+    special: input.special ?? false, shield: input.shield ?? false, grab: input.grab ?? false, walk: input.walk ?? false, taunt: input.taunt ?? false,
     // `|| 0` folds -0 like x/y: the binary relay codec cannot carry it and atan2 can tell them apart.
     cX: (Number.isFinite(input.cX) ? input.cX! : 0) || 0, cY: (Number.isFinite(input.cY) ? input.cY! : 0) || 0,
     ...(input.specialDirection === undefined ? {} : {specialDirection: input.specialDirection}) };
 }
-const equal = (a: PlayerInput, b: PlayerInput) => a.x===b.x&&a.y===b.y&&(a.cX??0)===(b.cX??0)&&(a.cY??0)===(b.cY??0)&&a.jump===b.jump&&a.attack===b.attack&&a.strong===b.strong&&a.down===b.down&&a.special===b.special&&a.shield===b.shield&&a.grab===b.grab&&a.walk===b.walk&&a.specialDirection===b.specialDirection;
+const equal = (a: PlayerInput, b: PlayerInput) => a.x===b.x&&a.y===b.y&&(a.cX??0)===(b.cX??0)&&(a.cY??0)===(b.cY??0)&&a.jump===b.jump&&a.attack===b.attack&&a.strong===b.strong&&a.down===b.down&&a.special===b.special&&a.shield===b.shield&&a.grab===b.grab&&a.walk===b.walk&&a.taunt===b.taunt&&a.specialDirection===b.specialDirection;
 
 /** Bounded rollback for this prototype's deterministic frame-boundary state.
  * Not a competitive/anti-cheat system, original Melee rollback, or a cross-engine

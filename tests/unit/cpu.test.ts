@@ -35,7 +35,7 @@ describe('CPU level ladder (original level tables on a prototype brain)', () => 
     expect(structuredClone(brain)).toEqual(brain); expect(brain.level).toBe(7); expect(brain.script).toEqual([]);
   });
   it('carries the level in v5+ room CPU commands only within bounds', () => {
-    expect(ROOM_PROTOCOL).toBe(10);
+    expect(ROOM_PROTOCOL).toBe(11);
     expect(parseClientMessage(JSON.stringify({ type: 'cpu', token: 'abc', slot: 2, fighter: 'Kb', level: 9 }))).toMatchObject({ type: 'cpu', slot: 2, level: 9 });
     expect(parseClientMessage(JSON.stringify({ type: 'cpu', token: 'abc', slot: 2, fighter: null }))).toMatchObject({ type: 'cpu', fighter: null });
     for (const level of [0, 10, 2.5, '9']) expect(() => parseClientMessage(JSON.stringify({ type: 'cpu', token: 'abc', slot: 2, fighter: 'Kb', level }))).toThrow();

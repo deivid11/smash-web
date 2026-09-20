@@ -36,7 +36,7 @@ function room(count = 2, options: ConstructorParameters<typeof RoomHub>[0] = {})
 }
 
 describe('binary input codec', () => {
-  const analog: NetInput = { x: 0.4375, y: -0.71, jump: true, attack: false, strong: true, down: false, special: true, specialDirection: 'side', shield: false, grab: true, walk: false, cX: -1, cY: 0.123456789 };
+  const analog: NetInput = { x: 0.4375, y: -0.71, jump: true, attack: false, strong: true, down: false, special: true, specialDirection: 'side', shield: false, grab: true, walk: false, taunt: false, cX: -1, cY: 0.123456789 };
   it('round-trips canonical inputs exactly, digital frames in three bytes', () => {
     expect(encodeInputPayload(neutral)).toHaveLength(3);
     expect(encodeInputPayload({ ...neutral, x: -1, y: 1, jump: true })).toHaveLength(3);
@@ -63,6 +63,10 @@ describe('binary input codec', () => {
     const bad = encodeInputPayload({ ...neutral, x: 0.5 }); new DataView(bad.buffer).setFloat64(3, 1.5, true);
     expect(inputPayloadLength(bad, 0)).toBe(-1);
     const direction = encodeInputPayload(neutral); direction[1] = 5; expect(inputPayloadLength(direction, 0)).toBe(-1);
+    // Byte 1 carries the taunt bit beside the direction; bits 3-6 stay reserved.
+    expect(encodeInputPayload({ ...analog, taunt: true })[1]).toBe(0x82);
+    expect(decodeInputPayload(encodeInputPayload({ ...analog, taunt: true }))).toEqual({ ...analog, taunt: true });
+    const reserved = encodeInputPayload({ ...neutral, taunt: true }); reserved[1]! |= 8; expect(inputPayloadLength(reserved, 0)).toBe(-1);
   });
   it('run-length encodes a whole match log into bounded chunks', () => {
     const frames = Array.from({ length: 10_800 }, (_, frame) => encodeInputPayload(frame % 600 < 590 ? { ...neutral, x: 1 } : { ...analog, x: (frame % 7) / 8 }));

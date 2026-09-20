@@ -48,7 +48,7 @@ export function serverDiscReader(manifest: SourceManifest, fetcher: Fetcher = fe
  * each sub-range the reader asked for; those are sliced from that entry (kept in a
  * small LRU so one file is not re-read per range). Exact range keys (larger files,
  * or transports that cache below the slicing layer) are tried as well. */
-export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, options: { wholeFileLimit?: number; retain?: number } = {}): DiscReader {
+export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, options: { wholeFileLimit?: number; retain?: number; missHint?: string } = {}): DiscReader {
   const identity = manifestIdentity(manifest);
   const limit = options.wholeFileLimit ?? WHOLE_FILE_LIMIT, retain = options.retain ?? 16;
   const whole = new Map<string, Promise<Uint8Array | undefined>>();
@@ -89,7 +89,7 @@ export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, op
       }
       const hit = await lookup(assetCacheKeys(identity, file, start, end), length);
       if (!hit) {
-        throw new Error(`Offline asset missing (${file.path} bytes ${start}-${end}). Connect once to download game data, then play offline.`);
+        throw new Error(`Offline asset missing (${file.path} bytes ${start}-${end}). ${options.missHint ?? 'Connect once to download game data, then play offline.'}`);
       }
       return hit;
     },
@@ -98,7 +98,23 @@ export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, op
 
 /** Offline boot from the persisted manifest + downloaded ranges. Returns null when
  * nothing was ever downloaded (first visit must be online). Never touches network. */
-export async function connectCachedSource(options: { wholeFileLimit?: number } = {}): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
+/** Files of the manifest that have no whole-file entry in the store. A copy saved from the
+ * player's own disc has none; data downloaded on demand from a streaming host is partial,
+ * and a host that no longer streams can only complete it from the player's disc. */
+export async function storedCopyGaps(manifest: SourceManifest, store: AssetStore): Promise<string[]> {
+  const identity = manifestIdentity(manifest), gaps: string[] = [];
+  for (const file of manifest.files) {
+    if (file.size === 0) continue;
+    let found = false;
+    for (const key of assetCacheKeys(identity, file, 0, file.size - 1)) {
+      if (await (store.has ? store.has(key) : store.get(key).then((bytes) => bytes !== undefined)).catch(() => false)) { found = true; break; }
+    }
+    if (!found) gaps.push(file.path);
+  }
+  return gaps;
+}
+
+export async function connectCachedSource(options: { wholeFileLimit?: number; missHint?: string } = {}): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
   const store = cacheStorageStore();
   if (!store) return null;
   const manifest = await loadCachedManifest();

@@ -864,6 +864,8 @@
 .game-app .mode-prompt-error strong { color: #ff8f9b; font: italic 800 15px Arial, sans-serif; }
 .game-app .mode-prompt-error button { padding: 8px 28px; border: 0; border-radius: 4px; background: #ffe769; color: #0b1020; font: 800 14px Arial, sans-serif; cursor: pointer; }
 .game-app .mode-research-note { margin-top: 14px; text-align: center; color: #7489a6; font: 9px/1.8 var(--mono); }
+/* Build stamp, pinned to the screen's bottom-right corner on the main menu only. */
+.game-app .game-version { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); z-index: 30; margin: 0; color: #64799a; font: 9px/1.6 var(--mono); letter-spacing: 1.5px; text-shadow: 0 1px 2px #000a; pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
   /* Same index as the cascade, so every banner flies in on its own beat. */
   .game-app .mode-choice { animation: mode-banner-in .45s backwards; animation-delay: calc(var(--mode-index, 0) * .06s); }
@@ -1086,6 +1088,9 @@
 .game-app .disc-save { position: fixed; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 40; transform: translateX(-50%); margin: 0; padding: 5px 12px; max-width: 94vw; border: 1px solid #2c3c52; border-radius: 999px; background: #0b1014e6; color: #92a6c1; font: 9px/1.6 var(--mono); letter-spacing: .5px; text-align: center; pointer-events: none; }
 .game-app .disc-save.is-done { border-color: #2f7d4f; color: #8fe0ae; animation: disc-save-out 1s ease 6s forwards; }
 .game-app .disc-save.is-failed { border-color: #8a3b44; color: #ff8a94; }
+.game-app .disc-save.is-gaps { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; padding: 6px 8px 6px 14px; border-color: #8a6a2c; border-radius: 14px; color: #ffd27a; font-size: 10px; pointer-events: auto; }
+.game-app .disc-gaps-button { padding: 5px 14px; border: 1px solid #ffd27a; border-radius: 999px; background: #ffd27a; color: #14100a; font: 700 10px/1.6 var(--mono); letter-spacing: .5px; text-decoration: none; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.game-app .disc-gaps-button:hover, .game-app .disc-gaps-button:focus-visible { background: #fff; border-color: #fff; outline: none; }
 @keyframes disc-save-out { to { opacity: 0; visibility: hidden; } }
 .game-app .disc-gate { justify-content: flex-start; overflow-y: auto; padding-block: max(24px, 6dvh); }
 .game-app .disc-gate-about { width: min(560px, 92vw); margin-top: 6px; padding: 12px 14px; border: 1px solid #2c3c52; border-radius: 7px; background: #0f172399; text-align: left; }

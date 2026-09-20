@@ -9,7 +9,7 @@ export type LocalControllerCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type LocalControllerInputs = [PlayerInput, PlayerInput, ...PlayerInput[]];
 
 const STORAGE_KEY = 'smash.controller-mappings.v1';
-const LATCHED = ['jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk', 'down'] as const;
+const LATCHED = ['jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk', 'taunt', 'down'] as const;
 const MAX_DEVICES = 16;
 interface StoragePort { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export interface ControllerEnvironment {

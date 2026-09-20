@@ -91,8 +91,8 @@ describe('real same-origin LAN WebSocket server security', () => {
     const binary = new Wire(); await binary.next('hello'); const binaryClosed = once(binary.ws, 'close'); binary.ws.send(Buffer.from([1, 2, 3]));
     expect((await binaryClosed)[0]).toBe(1008); expect(reads).toBe(0);
   });
-  it.each([[1, 'create'], [1, 'join'], [2, 'create'], [2, 'join'], [3, 'create'], [3, 'join'], [5, 'create'], [5, 'join'], [6, 'create'], [6, 'join'], [7, 'create'], [7, 'join'], [8, 'create'], [8, 'join']] as const)('rejects legacy protocol%i %s commands at handshake', async (protocol, type) => {
-    const peer = new Wire(); expect((await peer.next('hello')).protocol).toBe(ROOM_PROTOCOL); expect(ROOM_PROTOCOL).toBe(10);
+  it.each([[1, 'create'], [1, 'join'], [2, 'create'], [2, 'join'], [3, 'create'], [3, 'join'], [5, 'create'], [5, 'join'], [6, 'create'], [6, 'join'], [7, 'create'], [7, 'join'], [8, 'create'], [8, 'join'], [10, 'create'], [10, 'join']] as const)('rejects legacy protocol%i %s commands at handshake', async (protocol, type) => {
+    const peer = new Wire(); expect((await peer.next('hello')).protocol).toBe(ROOM_PROTOCOL); expect(ROOM_PROTOCOL).toBe(11);
     peer.send({ type, protocol, name: 'Legacy client', fingerprint, ...(type === 'join' ? { code: 'ABC234' } : {}) });
     expect((await peer.next('error')).code).toBe('BAD_MESSAGE'); peer.ws.close();
   });

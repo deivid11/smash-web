@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
-import { connectCachedSource, connectServerSource } from '../../../lib/hsd/server-source.ts';
+import { connectCachedSource, connectServerSource, storedCopyGaps } from '../../../lib/hsd/server-source.ts';
 import { openLocalSource, saveLocalCopy, type LocalSource } from '../../../lib/hsd/local-source.ts';
 import type { SourceManifest } from '../../../lib/hsd/source-protocol.ts';
 import { localDiscReader } from '../lab/local-disc.ts';
@@ -62,6 +62,8 @@ export interface PlayView {
   /** Client-disc mode only: progress (0-1) of saving the game files in this browser so the disc
    * is not asked for again; 'saved' once done, 'failed' when storage refused. Null otherwise. */
   discSave: number | 'saved' | 'failed' | null;
+  /** Client-disc mode, stored partial data: how many game files this browser never received. */
+  discGaps: number;
   ready: boolean; loading: boolean; error: string; progress: string; progressFraction: number; audioError: string; visualWarning?: string;
   /** Presentation only: full fighter cards, or minimal overhead damage percents. */
   hudMode: 'cards' | 'overhead';
@@ -253,7 +255,7 @@ const initialSetup = (): BattleSetup => ({ seats: defaultSeats(), stage: 'battle
 
 /** One disposable simulation/render runtime. Draft seats are separate from live state. */
 export class GameSession {
-  readonly ui = new Store<PlayView>({ discGate: null, discSave: null, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I and the second uses arrows / Enter / N M comma Right Shift period; both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
+  readonly ui = new Store<PlayView>({ discGate: null, discSave: null, discGaps: 0, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I (T taunts) and the second uses arrows / Enter / N M comma Right Shift period (B taunts); both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
   readonly hud = new Store<HudView>({ frame: 0, clock: '3:00', status: 'LOADING', mode: 'SOLO / LOCAL', stage: 'battlefield', phase: 'ready', countdown: 0, winner: '', winnerSlot: null, banner: '', onettWarning: false, rouletteIn: null, fighters: [], shieldMax: 60, hill: null });
   readonly fallLog = new Store<FallLogView>({ entries: [] });
   /** Presentation taps for confirmed local match events (Rift Descent HUD popups).
@@ -446,10 +448,13 @@ export class GameSession {
       // Players who downloaded the game data while this host still served it keep playing from
       // that data: the disc gate only opens when nothing usable is stored (or on ?disc, which
       // lets such a player switch to their own ISO for the fighters they never downloaded).
-      const storedFirst = clientAce && !new URLSearchParams(location.search).has('disc') ? await connectCachedSource({ wholeFileLimit: Number.POSITIVE_INFINITY }).catch(() => null) : null;
+      const storedFirst = clientAce && !new URLSearchParams(location.search).has('disc') ? await connectCachedSource({ wholeFileLimit: Number.POSITIVE_INFINITY, missHint: 'This host does not stream game data: reload with your own disc to add it.' }).catch(() => null) : null;
       let fromStored = !!storedFirst;
       let connected = storedFirst ?? (clientAce ? await this.awaitLocalDiscs(clientAce) : await connectServerSource(fetcher, this.abort.signal).catch((error: unknown) => { onlineError = error; return null; }));
       if (fromStored) this.ui.update({ progress: `Playing from previously downloaded data (${connected!.manifest.title}).`, progressFraction: 0.02 });
+      // Data downloaded while the host still streamed is partial and this host cannot complete it:
+      // count the gaps behind the menus so the player is offered their own disc instead of bare misses.
+      if (storedFirst) { const store = cacheStorageStore(); if (store) void storedCopyGaps(storedFirst.manifest, store).then((gaps) => { if (!this.disposed && fromStored && gaps.length) this.ui.update({ discGaps: gaps.length }); }, () => undefined); }
       if (!connected) {
         // Offline boot: reuse the persisted manifest + downloaded ranges from an
         // earlier online visit (same disc identity, same hashes). Nothing is
@@ -485,7 +490,7 @@ export class GameSession {
       catch (error) {
         // Stored data too incomplete to boot (the core was never fully downloaded): ask for the disc after all.
         if (!fromStored || !clientAce || this.disposed) throw error;
-        fromStored = false;
+        fromStored = false; this.ui.update({ discGaps: 0 });
         connected = await this.awaitLocalDiscs(clientAce);
         this.source = connected.session;
         this.fingerprint.content = await this.contentFingerprint(connected.manifest);

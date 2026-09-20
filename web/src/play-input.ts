@@ -57,7 +57,7 @@ export class PlayInput {
   private layoutInput(keys: KeyLayout, touch: Partial<Record<keyof KeyLayout, string>> = {}): LocalControllerInputs[number] {
     const held = (action: keyof KeyLayout) => this.has(...keys[action], ...(touch[action] ? [touch[action]!] : []));
     return { x: +held('right') - +held('left'), y: +held('up') - +held('down'), jump: held('jump'), attack: held('attack'), strong: held('strong'),
-      down: held('down'), walk: held('walk'), shield: held('shield'), grab: held('grab'), special: held('special'), cX: 0, cY: 0 };
+      down: held('down'), walk: held('walk'), shield: held('shield'), grab: held('grab'), special: held('special'), taunt: held('taunt'), cX: 0, cY: 0 };
   }
   consumeLatches(): void { this.latched.clear(); this.controllers.consumeLatches(); }
   poll(consume = true): LocalControllerInputs {
@@ -95,7 +95,7 @@ export class PlayInput {
       if (Math.abs(pad.x) > Math.abs(input.x)) input.x = pad.x;
       if (Math.abs(pad.y ?? 0) > Math.abs(input.y ?? 0)) input.y = pad.y;
       input.jump ||= pad.jump; input.attack ||= pad.attack; input.strong ||= pad.strong; input.special ||= pad.special;
-      input.down ||= pad.down; input.shield ||= pad.shield; input.grab ||= pad.grab; input.walk ||= pad.walk;
+      input.down ||= pad.down; input.shield ||= pad.shield; input.grab ||= pad.grab; input.walk ||= pad.walk; input.taunt ||= pad.taunt;
       // The smash-stick merges by amplitude like the left stick: a flick in any
       // direction wins over neutral, and releasing it recenters without sticking.
       if (Math.abs(pad.cX ?? 0) > Math.abs(input.cX ?? 0)) input.cX = pad.cX;

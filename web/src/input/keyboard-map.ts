@@ -1,7 +1,7 @@
 /** Rebindable keyboard layouts for the first two local humans. Purely a local input concern:
  * the simulation, rollback and the online relay only ever see the resulting PlayerInput. */
 
-export const KEY_ACTIONS = ['left', 'right', 'up', 'down', 'jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk'] as const;
+export const KEY_ACTIONS = ['left', 'right', 'up', 'down', 'jump', 'attack', 'strong', 'special', 'shield', 'grab', 'walk', 'taunt'] as const;
 export type KeyAction = (typeof KEY_ACTIONS)[number];
 /** One layout: every action owns a list of physical key codes (KeyboardEvent.code). */
 export type KeyLayout = Record<KeyAction, string[]>;
@@ -9,12 +9,12 @@ export type KeyboardMap = readonly [KeyLayout, KeyLayout];
 
 export const KEY_ACTION_LABELS: Record<KeyAction, string> = {
   left: 'Move left', right: 'Move right', up: 'Aim up', down: 'Crouch / drop / fast-fall', jump: 'Jump',
-  attack: 'Quick attack (A)', strong: 'Smash attack', special: 'Special (B)', shield: 'Shield / air dodge', grab: 'Grab', walk: 'Walk (hold)',
+  attack: 'Quick attack (A)', strong: 'Smash attack', special: 'Special (B)', shield: 'Shield / air dodge', grab: 'Grab', walk: 'Walk (hold)', taunt: 'Taunt (standing)',
 };
 
 export const DEFAULT_KEYBOARD_MAP: KeyboardMap = [
-  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], jump: ['Space'], attack: ['KeyJ'], strong: ['KeyK'], special: ['KeyL'], shield: ['KeyU'], grab: ['KeyI'], walk: ['ShiftLeft'] },
-  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], jump: ['Enter', 'Numpad0'], attack: ['KeyN', 'Numpad1'], strong: ['KeyM', 'Numpad2'], special: ['Comma'], shield: ['ShiftRight'], grab: ['Period'], walk: ['Slash'] },
+  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], jump: ['Space'], attack: ['KeyJ'], strong: ['KeyK'], special: ['KeyL'], shield: ['KeyU'], grab: ['KeyI'], walk: ['ShiftLeft'], taunt: ['KeyT'] },
+  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], jump: ['Enter', 'Numpad0'], attack: ['KeyN', 'Numpad1'], strong: ['KeyM', 'Numpad2'], special: ['Comma'], shield: ['ShiftRight'], grab: ['Period'], walk: ['Slash'], taunt: ['KeyB', 'Numpad3'] },
 ];
 
 /** Keys the game or the browser needs for itself; they can never be bound. */
@@ -31,10 +31,13 @@ export function parseKeyboardMap(value: unknown): KeyboardMap | null {
   const players = (value as { players?: unknown }).players;
   if (!Array.isArray(players) || players.length !== 2) return null;
   const seen = new Set<string>();
-  const layouts = players.map((entry) => {
+  const layouts = players.map((entry, player) => {
     const layout = {} as KeyLayout;
     for (const action of KEY_ACTIONS) {
-      const codes = Array.isArray((entry as Record<string, unknown> | null)?.[action]) ? (entry as Record<string, unknown[]>)[action]! : [];
+      // An action the stored map never heard of (taunt, in maps saved before it existed)
+      // keeps its default keys, minus any the player has since bound elsewhere.
+      const codes = Array.isArray((entry as Record<string, unknown> | null)?.[action]) ? (entry as Record<string, unknown[]>)[action]!
+        : [...(DEFAULT_KEYBOARD_MAP[player as 0 | 1]?.[action] ?? [])];
       layout[action] = codes.filter((code): code is string => typeof code === 'string' && bindable(code) && !seen.has(code) && !!seen.add(code)).slice(0, 3);
     }
     return layout;

@@ -37,7 +37,7 @@ function setup(count = 2) {
 }
 
 describe('voice protocol validation', () => {
-  it('requires v10, including installed character-pack identities', () => expect(ROOM_PROTOCOL).toBe(10));
+  it('requires v11: pack identities plus the taunt input bit', () => expect(ROOM_PROTOCOL).toBe(11));
   it('accepts bounded offers, answers and trickle ICE', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'voice-offer', token: 't', target: 1, sdp }))).toMatchObject({ type: 'voice-offer', target: 1 });
     expect(parseClientMessage(JSON.stringify({ type: 'voice-answer', token: 't', target: 0, sdp }))).toMatchObject({ type: 'voice-answer' });

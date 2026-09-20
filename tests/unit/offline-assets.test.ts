@@ -9,7 +9,7 @@ import {
   rangeCacheKey,
   saveCachedManifest,
 } from '../../lib/hsd/asset-fetch.ts';
-import { cachedDiscReader, connectCachedSource, connectServerSource, serverDiscReader } from '../../lib/hsd/server-source.ts';
+import { cachedDiscReader, connectCachedSource, connectServerSource, serverDiscReader, storedCopyGaps } from '../../lib/hsd/server-source.ts';
 import { registerOfflineWorker } from '../../web/src/sw-register.ts';
 import { MELEE_102 } from '../../lib/disc.ts';
 import { VIEWER_ASSETS, parseSourceManifest, type SourceManifest } from '../../lib/hsd/source-protocol.ts';
@@ -95,6 +95,17 @@ describe('offline-first original data', () => {
     });
     expect(await reader.read(plCo.offset, 2)).toEqual(new Uint8Array([9, 9]));
     await expect(reader.read(plCo.offset + 10, 4)).rejects.toThrow('Offline asset missing (PlCo.dat bytes 10-13)');
+  });
+  it('lists the files a partial stored copy lacks and words the miss for a host that streams nothing', async () => {
+    const identity = manifestIdentity(manifest);
+    const plCo = manifest.files.find((file) => file.path === 'PlCo.dat')!;
+    const memory = new Map<string, Uint8Array>(manifest.files.filter((file) => file.path !== 'PlCo.dat').map((file) => [rangeCacheKey(identity, file.path, 0, file.size - 1), new Uint8Array(file.size)]));
+    const store = { get: async (key: string) => memory.get(key), put: async () => {}, has: async (key: string) => memory.has(key) };
+    expect(await storedCopyGaps(manifest, store)).toEqual(['PlCo.dat']);
+    const reader = cachedDiscReader(manifest, store, { wholeFileLimit: Number.POSITIVE_INFINITY, missHint: 'Reload with your own disc.' });
+    await expect(reader.read(plCo.offset, 4)).rejects.toThrow('Offline asset missing (PlCo.dat bytes 0-3). Reload with your own disc.');
+    memory.set(rangeCacheKey(identity, 'PlCo.dat', 0, plCo.size - 1), new Uint8Array(plCo.size));
+    expect(await storedCopyGaps(manifest, { get: store.get, put: store.put })).toEqual([]);
   });
   it('replays sub-ranges offline from whole-file downloads made by the online transport', async () => {
     // Online play caches small files whole (coalescing above the cache), so offline

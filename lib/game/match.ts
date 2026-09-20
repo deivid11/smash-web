@@ -41,6 +41,7 @@ import { DIDDY_BANANA } from './diddy-data.ts';
 import { peachToadCounter, triggerPeachToad, peachSmashName, stepPeachFloat, peachThrowTurnip, peachBomberDetect } from './peach.ts';
 import { warioBashDetect } from './wario.ts';
 import { tailsOnLanding, tailsOnInterrupted } from './tails.ts';
+import { tauntAnimation } from './taunt.ts';
 import { pointSegmentDistanceSquared } from './collision.ts';
 export { pointSegmentDistanceSquared } from './collision.ts';
 import { initialNanaState, stepNanaState, nanaStrikeHit, NANA_ANCHOR_BACK, NANA_MIN_TUMBLE, type NanaState } from './nana.ts';
@@ -62,12 +63,15 @@ import { clampCpuLevel, cpuInput, createCpuBrain, DEFAULT_CPU_LEVEL, isCpuLevel,
 import { NEUTRAL_ROGUE_MODS, POISON_TICK_EVERY, rogueAfterHit, rogueAllied, rogueDefy, rogueEssentialOut, rogueHitScale, rogueMoveMul, rogueOnKo, rogueTick, rogueVenom, type RogueFx, type RogueHex, type RogueMods, type RoguePoison } from './roguelike/sim.ts';
 
 export interface PlayerInput { x: number; jump: boolean; attack: boolean; strong: boolean; down: boolean; y?: number; special?: boolean; specialDirection?: SpecialDirection; shield?: boolean; grab?: boolean; walk?: boolean;
+  /** Appeal (taunt): a grounded, committal salute. Digital only — the original reads
+   * the D-pad, this port reads its own bound key/button (see `lib/game/taunt.ts`). */
+  taunt?: boolean;
   /** C-stick (right stick) vector: x right, y up, unit circle. Smash-only: it fires
    * and charges smash attacks with its own direction (see `lib/game/smash-stick.ts`)
    * and never moves the fighter, tap-jumps, fast-falls or steers specials. */
   cX?: number; cY?: number }
-export const neutralInput = (): PlayerInput => ({ x: 0, y: 0, jump: false, attack: false, strong: false, down: false, special: false, cX: 0, cY: 0 });
-export type FighterState = 'idle' | 'walk' | 'run' | 'crouch' | 'squat' | 'jump' | 'airjump' | 'fall' | 'attack' | 'landing' | 'hitstun' | 'ko' | 'respawn' | 'special' | 'helpless' | 'shield' | 'dodge' | 'air-dodge' | 'grab' | 'holding' | 'captured' | 'throw' | 'grab-release' | 'ledge' | 'ledge-action' | 'ledge-jump' | 'shield-break' | 'dizzy' | 'tether' | 'item-throw' | 'item-pickup' | 'bury' | 'frozen';
+export const neutralInput = (): PlayerInput => ({ x: 0, y: 0, jump: false, attack: false, strong: false, down: false, special: false, taunt: false, cX: 0, cY: 0 });
+export type FighterState = 'idle' | 'walk' | 'run' | 'crouch' | 'squat' | 'jump' | 'airjump' | 'fall' | 'attack' | 'landing' | 'hitstun' | 'ko' | 'respawn' | 'special' | 'helpless' | 'shield' | 'dodge' | 'air-dodge' | 'grab' | 'holding' | 'captured' | 'throw' | 'grab-release' | 'ledge' | 'ledge-action' | 'ledge-jump' | 'shield-break' | 'dizzy' | 'tether' | 'item-throw' | 'item-pickup' | 'bury' | 'frozen' | 'taunt';
 /** PROTOTYPE (roguelike): per-fighter boon modifiers, hexes and hit hooks for Rift
  * Descent live in `lib/game/roguelike/sim.ts`. Neutral by default so versus play is
  * unchanged; the wrapper in `lib/game/roguelike/apply.ts` assigns them post-countdown.
@@ -713,7 +717,7 @@ export class LocalMatch {
       if (this.options.zombies && attacker.infected && victim.infected) continue;
       // PROTOTYPE (roguelike): allied rivals on a Rift team floor never strike or grab each other.
       if (rogueAllied(attacker, victim)) continue;
-      if (!['attack','special','grab','ledge-action'].includes(attacker.state) || !attacker.attackName || frozen[attacker.slot] || attacker.hitlag > 0 || victim.invulnerable > 0 || victim.state === 'ko' || victim.state === 'respawn') continue;
+      if (!['attack','special','grab','ledge-action','taunt'].includes(attacker.state) || !attacker.attackName || frozen[attacker.slot] || attacker.hitlag > 0 || victim.invulnerable > 0 || victim.state === 'ko' || victim.state === 'respawn') continue;
       const hits = this.strikeHits(attacker);
       // Strikes reaching a block start its spin (prototype stand-in for the per-block
       // joint contact accumulation); grabs and Raptor-Boost detects never trigger it.
@@ -759,7 +763,7 @@ export class LocalMatch {
       if (this.options.teams && hillTeamOfSlot(attacker.seatId ?? attacker.slot) === hillTeamOfSlot(owner.seatId ?? owner.slot)) continue;
       if (this.options.zombies && attacker.infected && owner.infected) continue;
       if (rogueAllied(attacker, owner)) continue;
-      if (!['attack','special','grab','ledge-action'].includes(attacker.state) || !attacker.attackName || frozen[attacker.slot] || attacker.hitlag > 0) continue;
+      if (!['attack','special','grab','ledge-action','taunt'].includes(attacker.state) || !attacker.attackName || frozen[attacker.slot] || attacker.hitlag > 0) continue;
       if (owner.state === 'ko' || owner.state === 'respawn') continue;
       const hits = this.strikeHits(attacker);
       for (const hit of hits) {
@@ -997,6 +1001,7 @@ export class LocalMatch {
     let strong = (input.strong && !fighter.previous.strong) || cEdge;
     const down = input.down && !fighter.previous.down;
     let specialPressed = !!input.special && !fighter.previous.special;
+    const tauntPressed = !!input.taunt && !previous.taunt;
     // Tap jump like the original: a fresh upward stick flick counts as a jump press
     // (ftCo threshold ~0.66); holding up never retriggers, and a same-frame attack,
     // smash or special edge keeps its priority (up-tilt/up-smash/up-special inputs).
@@ -1165,6 +1170,8 @@ export class LocalMatch {
       else this.change(fighter, fighter.grounded ? 'idle' : 'fall', fighter.grounded ? 'Wait1' : 'Fall');
     }
     if ((fighter.state === 'jump' || fighter.state === 'airjump') && fighter.animationFrame >= fighter.content.clips.get(fighter.animation)!.endFrame) this.change(fighter, 'fall', 'Fall');
+    // The Appeal plays out and returns to Wait; only a hit (ftCo_Damage) cuts it short.
+    if (fighter.state === 'taunt' && fighter.animationFrame >= fighter.content.clips.get(fighter.animation)!.endFrame) this.change(fighter, 'idle', 'Wait1');
     if (fighter.state === 'squat') {
       if (!input.jump && input.y <= 0.66) fighter.shortHop = true; // stick held up keeps the full hop
       // Original jump-squat cancels (ftCo KneeBend interrupts): an up-smash or an
@@ -1200,7 +1207,12 @@ export class LocalMatch {
       && fighter.attackName !== fighter.content.moves.jab && fighter.attackName !== fighter.content.moves.jab2
       && fighter.smash?.phase !== 'charging'
       ? fighter.content.attacks.get(fighter.attackName)?.interruptFrame ?? null : null;
-    const interruptible = iasaFrame !== null && fighter.animationFrame >= iasaFrame
+    // ftCo_AppealS_IASA: an Appeal owns the fighter until its own script raises the interrupt
+    // flag (Pikachu, Pichu, Raichu and Yoshi do; most taunts never do) and then hands the input
+    // to the same action gate as a grounded normal.
+    const tauntGate = fighter.state === 'taunt' ? fighter.content.timelines.get(fighter.animation)?.interruptFrame ?? null : null;
+    const actionGate = iasaFrame ?? tauntGate;
+    const interruptible = actionGate !== null && fighter.animationFrame >= actionGate
       && (jump || attack || strong || specialPressed || !!input.shield || !!input.grab || !!input.x || low);
     const interruptedInput=linkInterruptInput(fighter,atk,atkPrev,this.content.common);
     if(interruptedInput){
@@ -1219,6 +1231,18 @@ export class LocalMatch {
       else if (this.combat.tryAction(fighter,atk,atkPrev)) { /* Defense/grab owns this input. */ }
       // A heavy crate carry blocks specials and jumps (ftCo heavy-item locks).
       else if (specialPressed && !this.itemWorld.heavyHeld(fighter) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) beginSpecial(fighter, selectSpecial(input), input, this.content.common);
+      // ftCo_800DE9D8 (ftCo_AppealS.c), reached from Wait/Walk/Dash/Run/Turn/Squat* and an
+      // attack's own IASA: the Appeal sits after every attack, grab and shield check in
+      // ftCo_Wait_IASA and BEFORE jump, dash, turn and walk — so a same-frame attack keeps the
+      // input, a same-frame jump does not. Heavy-item carries keep their ftCo lock.
+      else if (tauntPressed && !attack && !strong && fighter.grounded && !this.itemWorld.heavyHeld(fighter) && fighter.state !== 'taunt'
+        && (interruptible || ['idle', 'walk', 'run', 'crouch'].includes(fighter.state)) && tauntAnimation(fighter.content, fighter.facing)) {
+        const motion = tauntAnimation(fighter.content, fighter.facing)!;
+        this.change(fighter, 'taunt', motion);
+        // Luigi's kick and the other scripted Appeal hitboxes strike from the taunt itself
+        // (ftCo_AppealS has no attack state of its own); motions without one stay harmless.
+        if (fighter.content.attacks.has(motion)) { fighter.attackName = motion; fighter.attackSerial++; fighter.victims.clear(); }
+      }
       else if (jump && !justJumped && !this.itemWorld.heavyHeld(fighter) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) {
         if (fighter.grounded) { fighter.shortHop = false; this.change(fighter, 'squat', 'Landing'); }
         else if (this.canAirJump(fighter)) { this.airJump(fighter, input); justJumped = true; }
@@ -1304,7 +1328,8 @@ export class LocalMatch {
     if (this.combat.physics(fighter)) { /* Original dodge/root-motion parameters. */ }
     else if (specialStep.handled) { /* Special physics already ran through the selected helpers. */ }
     else if (fighter.grounded) {
-      const rootMotion = (fighter.state === 'attack' || fighter.state === 'grab') && this.attackRootMotion(fighter);
+      // ftCo_AppealS_Phys (ft_80084FA8) applies the same friction and TransN root motion as a grounded attack.
+      const rootMotion = (fighter.state === 'attack' || fighter.state === 'grab' || fighter.state === 'taunt') && this.attackRootMotion(fighter);
       // ft_80085030: grounded attack scripts move by their TransN track (dash attacks, lunging smashes); frozen charge frames add nothing.
       fighter.velocity.x = rootMotion ? this.content.physics.motion(fighter.slot, f32(rootDelta(fighter).z * fighter.animationRate), 0, fighter.facing).x
         : fighter.state==='walk'
@@ -1420,7 +1445,7 @@ export class LocalMatch {
         fighter.grounded = false; fighter.floor = null; fighter.jumpsUsed = Math.max(1, fighter.jumpsUsed);
         // Inputs above may have started an attack/special; the old canAct value
         // must not cancel that new action on this same tick's ledge departure.
-        if (['idle','walk','run','crouch'].includes(fighter.state)||fighter.smash) this.change(fighter, 'fall', 'Fall');
+        if (['idle','walk','run','crouch','taunt'].includes(fighter.state)||fighter.smash) this.change(fighter, 'fall', 'Fall');
         if((fighter.content.profile.kind==='Lk'||fighter.content.profile.kind==='Cl')&&fighter.special?.direction==='up')fighter.jumpsUsed=attrs.maxJumps;
       }
     } else if (!kirbyIgnoresLanding(fighter)) {

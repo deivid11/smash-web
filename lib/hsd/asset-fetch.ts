@@ -8,6 +8,8 @@ export interface AssetStore {
   put(key: string, bytes: Uint8Array): Promise<void>;
   /** Optional: drop one entry (legacy entries after their content-key migration). */
   delete?(key: string): Promise<void>;
+  /** True when the key is stored, without reading its bytes (completeness checks). */
+  has?(key: string): Promise<boolean>;
   /** Optional: keep only content entries whose hash is listed, plus the given identity's legacy cache. */
   prune?(keepHashes: ReadonlySet<string>, identity: string): Promise<void>;
 }
@@ -275,6 +277,10 @@ export function cacheStorageStore(scope: { caches?: CacheStorage } = globalThis 
     async put(key, bytes) {
       const { identity, request } = split(key);
       await (await cacheFor(identity)).put(request, new Response(bytes.slice(0), { headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(bytes.byteLength) } }));
+    },
+    async has(key) {
+      const { identity, request } = split(key);
+      return (await (await cacheFor(identity)).match(request)) !== undefined;
     },
     async delete(key) {
       const { identity, request } = split(key);

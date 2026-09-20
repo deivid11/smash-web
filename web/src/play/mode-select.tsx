@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { FIGHTERS } from './battle-select.tsx';
 import { SUPPORTED_STAGES } from '../../../lib/game/stages.ts';
+import { GAME_VERSION, versionLabel } from '../version.ts';
 
 /** `error` is the boot failure (view.error before ready): shown in place of the
  * loading prompt so a failed data load never reads as an endless "Loading…". */
@@ -37,5 +38,7 @@ export function ModeSelect({ onSolo, onLan, onRogue, onTournament, onHill, onZom
     {!(!ready && error) && <p className="mode-prompt">{ready ? 'Choose a mode to set up your battle.' : 'Loading original assets…'}</p>}
     {system}
     <p className="mode-research-note">Unofficial fan project · limited porting prototype · original disc required.<br />{FIGHTERS.length} implemented fighters, {SUPPORTED_STAGES.length} stages. Not the complete Melee engine.</p>
+    {/* Corner build stamp: which game code this browser is actually running. */}
+    <p id="game-version" className="game-version" title={versionLabel()}>v{GAME_VERSION}</p>
   </section>;
 }
