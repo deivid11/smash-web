@@ -1,0 +1,5 @@
+// Top-level build file for the Smash Web Android shell.
+// Plugin versions must match the local SDK/Gradle cache (see docs/ANDROID.md).
+plugins {
+    id 'com.android.application' version '8.7.2' apply false
+}

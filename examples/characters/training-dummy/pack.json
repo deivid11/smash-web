@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "example.training-dummy",
+  "name": "Training Dummy (authored example)",
+  "entry": "runtime/index.ts",
+  "files": ["runtime/fighter.ts", "runtime/index.ts"],
+  "assets": {}
+}

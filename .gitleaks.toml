@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# These four exact strings are animation clip names, not access credentials.
+# Keep both the path and value conditions: other secrets in this file still fail.
+[[allowlists]]
+description = "Named aerial-jump animation keys"
+condition = "AND"
+regexTarget = "match"
+paths = ['(^|/)lib/game/dedede-data\.ts$']
+regexes = ["key: 'JumpAerialF[2-5]'"]

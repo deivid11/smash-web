@@ -1,0 +1,68 @@
+node_modules/
+dist/
+# Local character packs (code, artwork, private tests) and disc/runtime data.
+private/
+# Includes character-packs.json, the installation-specific opt-in list.
+.local/
+third_party/melee/
+web/public/wasm/
+coverage/
+test-results/
+playwright-report/
+*.log
+.env
+.env.*
+!.env.example
+*.iso
+*.gcm
+*.rvz
+*.dol
+*.7z
+*.7z.*
+dist-android/
+# Local staged/preview web builds.
+dist-*/
+# Android shell: machine-local SDK path plus Gradle/APK outputs.
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+
+# Private deployment helper; never publish operator infrastructure details.
+/deploy.sh
+
+# Local workflow instructions and machine/editor state are not publication inputs.
+AGENTS.md
+.DS_Store
+.idea/
+.vscode/
+
+# Defense in depth if private data or generated artifacts are misplaced.
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.db-*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.apk
+*.aab
+*.wasm
+*.map
+*.o
+*.a
+*.so
+*.exe
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.dat
+*.ssm
+*.hps

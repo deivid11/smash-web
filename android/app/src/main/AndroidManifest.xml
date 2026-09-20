@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network for the hosted build + handset/gamepad vibration. All are
+         normal permissions: granted at install, no runtime prompt. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Self-update: install newer packages from the hosted channel (user grants
+         "install unknown apps" once; Android still shows its own confirmation). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Install-status broadcasts are only accepted from same-signer senders. -->
+    <permission
+        android:name="dev.smashweb.play.permission.INSTALL_STATUS"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="dev.smashweb.play.permission.INSTALL_STATUS" />
+    <!-- Bluetooth/USB pads are paired in Android Settings; the shell only reads
+         already-connected InputDevices, it never scans or pairs itself. -->
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.vibrator" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:theme="@style/Theme.SmashWeb"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

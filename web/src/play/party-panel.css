@@ -1,0 +1,46 @@
+/* Party chat (web/src/play/party-panel.tsx): header chip, dialog, in-match talk overlay.
+ * The dialog reuses the options dialog plate; only its two-column body is styled here. */
+.party-chip { position: relative; }
+.party-chip.in-party { border-color: #2fd39a; color: #a9ffdd; }
+.party-chip.is-talking { box-shadow: 0 0 0 2px #2fd39a, 0 0 14px #2fd39a99; }
+.party-chip-count { position: absolute; right: -4px; bottom: -4px; min-width: 14px; padding: 0 3px; border-radius: 999px; background: #2fd39a; color: #032a1c; font: 900 9px var(--mono); }
+.party-chip-badge { position: absolute; right: -5px; top: -5px; min-width: 15px; padding: 0 3px; border-radius: 999px; background: #ff3d52; color: #fff; font: 900 10px var(--mono); font-style: normal; text-align: center; }
+.system-entry.party-chip .party-chip-badge { position: static; margin-left: 6px; }
+
+.game-app .party-dialog.party-dialog { width: min(1000px, 96vw); max-width: none; max-height: 94dvh; }
+.game-app .party-dialog :is(.party-layout, .party-signin) button { min-height: 0; padding: 6px 12px; font-size: 12px; letter-spacing: 0.3px; box-shadow: none; }
+.game-app .party-dialog .options-brand { font-size: 22px; } .game-app .party-dialog .options-heading h2 { font-size: 18px; }
+.party-status { margin-left: auto; margin-right: 10px; font: 800 10px var(--mono); letter-spacing: 1px; color: #8fa3c6; }
+.party-status.status-online { color: #2fd39a; }
+.party-signin { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; text-align: center; color: #c6d4ef; }
+.party-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 12px; min-height: 0; }
+.party-layout h3 { margin: 0 0 4px; display: flex; gap: 6px; align-items: baseline; color: #ffd24a; font: 800 11px var(--mono); letter-spacing: 1.5px; }
+.party-layout h3 small { color: #7e92b6; }
+.party-layout ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.party-invites { grid-column: 1 / -1; }
+.party-invites li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #ffd24a88; border-radius: 10px; background: #2a2006; color: #fff; }
+.party-invites li > span:nth-child(2) { flex: 1; min-width: 0; font-size: 13px; }
+.party-browse, .party-current { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #2a3a5c; border-radius: 12px; background: #0b1428; max-height: 66dvh; overflow-y: auto; scrollbar-width: thin; }
+.party-group { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid #26365a; border-radius: 9px; background: #111c35; }
+.party-group.is-current { border-color: #2fd39a; background: #0c2a22; } .party-group.has-friend { border-left: 3px solid #ffd24a; }
+.party-group-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #1b2a4d; font-size: 16px; }
+.party-group-main { min-width: 0; display: flex; flex-direction: column; } .party-group-main strong { color: #fff; font: 800 13px Arial, sans-serif; } .party-group-main small { color: #8fa3c6; font: 10px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.party-group-count { color: #c6d4ef; font: 800 11px var(--mono); } .party-group em { color: #2fd39a; font: 900 10px var(--mono); font-style: normal; }
+.party-empty { padding: 8px; border: 1px dashed #33466e; border-radius: 9px; color: #7e92b6; font: 11px var(--mono); }
+.party-create { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; } .party-create input { flex: 1 1 12ch; }
+.party-create input, .party-create select, .party-current-head select { min-width: 0; padding: 6px 8px; border: 1px solid #3a4d78; border-radius: 8px; background: #070d1c; color: #fff; font: 800 12px Arial, sans-serif; }
+.party-current-head { display: flex; align-items: center; gap: 8px; } .party-current-head > div { flex: 1; min-width: 0; } .party-current-head h3 { margin: 0; color: #fff; font: italic 900 18px Arial, sans-serif; letter-spacing: 0; } .party-current-head small { color: #8fa3c6; font: 10px var(--mono); }
+.party-voice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; border-radius: 10px; background: #111c35; } .party-voice small { flex: 1; min-width: 12ch; color: #8fa3c6; font: 10px var(--mono); }
+.party-members li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid #26365a; border-radius: 9px; background: #111c35; }
+.party-members li.is-speaking { border-color: #2fd39a; } .party-members li.is-speaking .party-avatar { box-shadow: 0 0 0 3px #2fd39a, 0 0 14px #2fd39a; }
+.party-member-main { flex: 1; min-width: 0; display: flex; flex-direction: column; } .party-member-main strong { color: #fff; font: 800 13px Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .party-member-main small { color: #8fa3c6; font: 10px var(--mono); }
+.party-members input[type='range'] { width: clamp(50px, 9vw, 110px); accent-color: #2fd39a; }
+.party-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: #24345a; border: 2px solid #fff6; transition: box-shadow 0.12s; } .party-avatar img { width: 100%; height: 100%; object-fit: cover; } .party-avatar b { color: #fff; font: 900 15px Arial, sans-serif; }
+.party-invite-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #7e92b6; font: 800 10px var(--mono); }
+.party-idle { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: #a9bbdb; } .party-idle > span { font-size: 44px; } .party-idle h3 { color: #fff; font: italic 900 18px Arial, sans-serif; letter-spacing: 0; } .party-idle p { margin: 0; max-width: 44ch; font: 12px/1.4 var(--mono); }
+.party-notice { margin: 0; padding: 5px 9px; border-radius: 8px; background: #2a1408; color: #ffd7b0; font: 11px var(--mono); }
+@media (max-width: 720px) { .party-layout { grid-template-columns: 1fr; } .party-browse, .party-current { max-height: none; } .party-create { grid-template-columns: 1fr; } }
+
+.party-overlay { position: absolute; left: max(10px, env(safe-area-inset-left)); top: clamp(54px, 14dvh, 84px); z-index: 12; display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
+.party-overlay span { width: fit-content; padding: 2px 9px; border-radius: 999px; background: #050a16cc; color: #c6d4ef; font: 800 clamp(9px, 2.2dvh, 12px) var(--mono); }
+.party-overlay .party-overlay-talker { border: 1px solid #2fd39a; color: #a9ffdd; }

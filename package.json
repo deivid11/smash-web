@@ -1,0 +1,56 @@
+{
+  "name": "smash-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "imports": { "#custom-packs": "./lib/custom/empty.ts" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1",
+    "preview:lan": "vite preview --host 0.0.0.0 --port 5273",
+    "serve": "tsx scripts/serve.ts",
+    "watch:build": "vite build --watch",
+    "dev:live": "tsx scripts/dev-live.ts",
+    "toolchain:setup": "tsx scripts/setup-toolchain.ts",
+    "upstream:setup": "tsx scripts/setup-upstream.ts",
+    "disc:import": "tsx scripts/import-disc.ts",
+    "reference:build": "tsx scripts/build-reference.ts",
+    "wasm:build": "tsx scripts/build-wasm.ts",
+    "pack:tv-assets": "tsx scripts/pack-tv-assets.ts",
+    "packs": "tsx scripts/manage-character-packs.ts",
+    "build:public": "SMASH_CHARACTER_PACKS=none npm run build --",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "test:server-browser": "playwright test --config playwright.server.config.ts",
+    "android:build": "npm run wasm:build && rm -rf dist-android && vite build --base=./ --outDir ../dist-android --emptyOutDir && tsx scripts/web-bundle-manifest.ts dist-android && (cd android && sh gradlew :app:assembleDebug)",
+    "android:web": "npm run wasm:build && rm -rf dist-android && vite build --base=./ --outDir ../dist-android --emptyOutDir && tsx scripts/web-bundle-manifest.ts dist-android",
+    "android:install": "(cd android && sh gradlew :app:installDebug)",
+    "build": "npm run wasm:build && npm run typecheck && vite build",
+    "check": "npm run build && npm test && npm run test:browser"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@types/three": "0.185.4",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "6.1.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.0"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "three": "0.186.0",
+    "ws": "8.21.3"
+  }
+}

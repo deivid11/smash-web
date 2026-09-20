@@ -1,0 +1,258 @@
+/* Battle setup as no-scroll screens: Solo / LAN character select
+ * (web/src/play/battle-select.tsx), the LAN gateway (web/src/play/online-panel.tsx)
+ * and stage select (web/src/play/selection-scenes.tsx). Same rules as the Rift
+ * screens (web/src/play/roguelike-screens.css): the menu layer is exactly the
+ * viewport, every screen is header · body · footer, the body owns the free space
+ * and its grids size their tiles from it (web/src/play/fit-grid.ts) instead of
+ * growing the page. The Melee metal look from web/src/play/scenes.css stays.
+ * Tuned for a 891×411 landscape phone up to desktop; loaded after scenes.css. */
+
+.game-app:is(.scene-characters, .scene-stages, .scene-online):not(.account-open) .menu-layer {
+  display: flex; flex-direction: column; overflow: hidden;
+  padding: max(clamp(4px, 1.4dvh, 16px), env(safe-area-inset-top)) max(clamp(8px, 1.8vw, 32px), env(safe-area-inset-right)) max(clamp(4px, 1.4dvh, 16px), env(safe-area-inset-bottom)) max(clamp(8px, 1.8vw, 32px), env(safe-area-inset-left));
+  background: radial-gradient(90% 60% at 100% 0%, #ff3d5212, transparent 60%), radial-gradient(80% 60% at 0% 100%, #377bff14, transparent 60%), repeating-linear-gradient(135deg, #ffffff02 0 55px, transparent 55px 120px), #071122;
+}
+/* The pad legend floats over the bottom edge while menu hands are active. */
+.game-app.has-menu-hands:is(.scene-characters, .scene-stages):not(.account-open) .menu-layer { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+
+.game-app .play-screen-host { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; display: flex; flex-direction: column; }
+/* Doubled class: the old `.stage-select.melee-stage-select` flex column must not win. */
+.game-app .play-screen.play-screen {
+  --gap: clamp(4px, 1.1dvh, 10px);
+  position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; box-sizing: border-box;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
+  /* Fade only: a translate would briefly overflow the layer and make it scrollable. */
+  animation: play-screen-in 0.18s ease both;
+}
+@keyframes play-screen-in { from { opacity: 0; } to { opacity: 1; } }
+.game-app .play-screen-body { position: relative; min-width: 0; min-height: 0; }
+
+/* ——— Header (Melee plate: BACK · title · rules · chips · settings) ——— */
+.game-app .play-screen .battle-select-heading { min-height: clamp(32px, 8.6dvh, 54px); margin: 0; }
+.game-app .play-screen .battle-logo { padding-block: 2px; }
+.game-app .play-screen .battle-logo h2 { font-size: clamp(18px, min(3.2vw, 6.6dvh), 40px); }
+.game-app .play-screen .versus-medallion { width: clamp(20px, 5.4dvh, 34px); height: clamp(20px, 5.4dvh, 34px); font-size: clamp(10px, 2.6dvh, 17px); }
+.game-app .play-screen .battle-rule-title { min-width: 0; padding-block: 2px; font-size: clamp(11px, min(1.9vw, 3.8dvh), 23px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .play-screen .battle-back { min-height: 0; padding: 2px 16px 2px 10px; font-size: clamp(11px, 2.8dvh, 15px); }
+.game-app .play-screen .system-menu-header { gap: clamp(3px, 0.6vw, 6px); padding: 0 clamp(4px, 0.8vw, 10px); }
+.game-app .play-screen .system-menu-header > :is(.system-icon, .icon-action) { width: clamp(26px, 7.6dvh, 38px); height: clamp(26px, 7.6dvh, 38px); font-size: clamp(13px, 3.8dvh, 19px); }
+
+/* Room code chip (LAN room + LAN stage headers). */
+.game-app .room-chip { flex: none; display: flex; align-items: center; gap: clamp(4px, 0.8vw, 10px); min-width: 0; padding: 0 clamp(6px, 1vw, 14px); background: #0f1a2e; border-left: 2px solid #ffcf4066; }
+.game-app .room-chip-label { color: #8699b7; font: 8px var(--mono); letter-spacing: 1px; }
+.game-app .room-chip #active-room-code { color: var(--game-gold); font: italic 950 clamp(14px, 4.4dvh, 26px) / 1 Arial, sans-serif; letter-spacing: clamp(1px, 0.3vw, 4px); }
+.game-app .room-chip-detail { color: #98aaca; font: 9px var(--mono); white-space: nowrap; }
+.game-app .room-chip .connection-state { padding: 2px 6px; border: 1px solid #74e6c655; color: #74e6c6; font: 8px var(--mono); letter-spacing: 1px; }
+
+/* Errors float over the body instead of pushing the layout. */
+.game-app .play-screen-alert { position: absolute; left: 50%; top: 6px; z-index: 8; max-width: 92%; transform: translateX(-50%); pointer-events: none; }
+.game-app .play-screen-alert:has(> .room-error:empty) { display: none; }
+.game-app .play-screen-alert .room-error { margin: 0; padding: 6px 14px; border: 1px solid #ffb07788; border-radius: 8px; background: #2a1408f2; box-shadow: 0 6px 18px #0009; }
+
+/* ——— Character select ——— */
+.game-app .battle-select-body { display: grid; grid-template-rows: minmax(0, 1fr) clamp(74px, 27dvh, 210px); gap: var(--gap); }
+.game-app .battle-select-body .roster-tray { position: relative; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: clamp(2px, 0.8dvh, 6px); padding: clamp(3px, 0.8dvh, 8px) clamp(4px, 0.7vw, 10px); }
+.game-app .roster-tray-head { display: flex; align-items: center; gap: clamp(6px, 1vw, 14px); min-width: 0; white-space: nowrap; }
+.game-app .roster-mode { flex: none; color: #ecf0f3; font: italic 950 clamp(11px, 2.8dvh, 17px) Arial, sans-serif; letter-spacing: -0.3px; }
+.game-app .roster-tray-head .seat-selection-hint { flex: none; min-height: 0; margin: 0; font-size: clamp(9px, 2.2dvh, 11px); }
+.game-app .roster-tray-head .seat-selection-hint .seat-token { height: clamp(12px, 3dvh, 16px); }
+.game-app .roster-note { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #8095ae; font: clamp(8px, 1.9dvh, 9px) var(--mono); }
+.game-app .roster-tray-head .roster-scope { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 8px; }
+.game-app .roster-tray-head .roster-scope strong { font-size: clamp(11px, 2.6dvh, 16px); }
+.game-app .roster-tray-head .load-progress-bar { flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.game-app .roster-tray-head .load-progress-track { width: clamp(60px, 9vw, 130px); }
+
+.game-app .battle-select-body .roster-grid { min-height: 0; height: 100%; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); grid-auto-flow: row dense; align-content: stretch; gap: 4px; }
+.game-app .battle-select-body .roster-fighter { container-type: size; min-height: 0; height: 100%; }
+.game-app .battle-select-body .roster-portrait, .game-app .battle-select-body .roster-half .roster-portrait { height: auto; min-height: 0; }
+.game-app .battle-select-body .roster-portrait > span { font-size: clamp(10px, 26cqh, 26px); }
+.game-app .battle-select-body .roster-fighter > strong, .game-app .battle-select-body .roster-half > strong { padding: clamp(1px, 3cqh, 3px) 1px; font-size: clamp(6px, min(12cqh, 10cqw), 10px); letter-spacing: clamp(0.2px, 1cqw, 1.2px); }
+.game-app .battle-select-body .roster-pair-halves { min-height: 0; }
+.game-app .battle-select-body .roster-pair { display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.game-app .battle-select-body .roster-half { min-height: 0; }
+.game-app .battle-select-body .roster-pair-caption { padding-block: clamp(0px, 2cqh, 2px); }
+.game-app .battle-select-body .roster-pair-caption strong { font-size: clamp(6px, 10cqh, 9px); }
+.game-app .battle-select-body .roster-pair-caption span { font-size: clamp(6px, 8cqh, 8px); }
+.game-app .battle-select-body .roster-cursor { right: -6px; top: -8px; }
+.game-app .battle-select-body .roster-cursor .cursor-token { width: clamp(20px, 44cqh, 38px); height: clamp(20px, 44cqh, 38px); font-size: clamp(9px, 17cqh, 15px); border-width: 2px; }
+.game-app .battle-select-body .roster-assignments .seat-token { min-width: 14px; height: clamp(10px, 18cqh, 16px); padding: 0 2px; font-size: clamp(6px, 12cqh, 9px); }
+@container (max-height: 46px) {
+  .game-app .battle-select-body .roster-fighter > strong, .game-app .battle-select-body .roster-half > strong, .game-app .battle-select-body .roster-pair-caption span { display: none; }
+}
+
+/* Fighters whose data is still downloading stay in place, dimmed, so the grid never reshuffles. */
+.game-app .battle-select-body :is(.roster-fighter, .roster-half).is-pending { opacity: 0.45; }
+/* Portrait not loaded yet: a spinner over the dimmed initials. */
+.game-app .roster-portrait.is-loading > span { opacity: 0.35; }
+.game-app .roster-portrait.is-loading::after { content: ''; position: absolute; left: 50%; top: 50%; width: clamp(14px, 34cqh, 26px); aspect-ratio: 1; margin: calc(clamp(14px, 34cqh, 26px) / -2) 0 0 calc(clamp(14px, 34cqh, 26px) / -2); border: 3px solid #ffffff80; border-top-color: #ffdf6b; filter: drop-shadow(0 0 3px #000a); border-radius: 50%; animation: roster-portrait-spin 0.8s linear infinite; }
+@keyframes roster-portrait-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .game-app .roster-portrait.is-loading::after { animation-duration: 2.4s; } }
+
+/* Player seats: one strip under the roster; active seats get twice the width of open ones. */
+.game-app .battle-select-body .player-seat-grid { min-height: 0; display: flex; gap: clamp(3px, 0.6vw, 8px); }
+.game-app .battle-select-body .player-seat { container-type: size; flex: 2 1 0; min-width: 0; height: 100%; border-width: 2px; grid-template-rows: clamp(16px, 5.2dvh, 26px) minmax(0, 1fr) clamp(16px, 5.6dvh, 30px); }
+.game-app .battle-select-body .player-seat[data-control="off"] { flex-grow: 1; }
+.game-app .battle-select-body .seat-number { min-width: clamp(18px, 2.4vw, 28px); font-size: clamp(10px, 3dvh, 14px); }
+.game-app .battle-select-body :is(.seat-kind-label, .seat-level-label) select { height: 100%; padding: 0 clamp(9px, 1.2vw, 12px) 0 3px; appearance: none; background: linear-gradient(45deg, transparent 50%, currentColor 50%) right 7px center / 4px 4px no-repeat, linear-gradient(135deg, currentColor 50%, transparent 50%) right 3px center / 4px 4px no-repeat, transparent; font-size: clamp(8px, 2.4dvh, 11px); }
+.game-app .battle-select-body .seat-level-label select { width: clamp(38px, 4.6vw, 52px); }
+.game-app .battle-select-body .seat-emblem { font-size: clamp(18px, 30cqh, 56px); }
+.game-app .battle-select-body .seat-fighter-name { bottom: clamp(15px, 17cqh, 26px); padding: 1px 3px; border-width: 1px; font-size: clamp(8px, min(9cqh, 7.5cqw), 14px); }
+.game-app .battle-select-body .player-seat[data-control="off"] .seat-fighter-name { bottom: 0; font-size: clamp(14px, min(24cqh, 26cqw), 44px); }
+.game-app .battle-select-body .seat-costume-strip { bottom: 2px; }
+.game-app .battle-select-body .seat-costume-name { font-size: clamp(7px, min(7cqh, 6.5cqw), 10px); line-height: 1.3; }
+.game-app .battle-select-body .seat-costume-arrow { padding: 0 clamp(3px, 3cqw, 6px); font-size: clamp(7px, 7cqh, 10px); line-height: 1.3; }
+.game-app .battle-select-body .seat-select > .cursor-token { left: 4px; top: 4px; width: clamp(18px, 18cqh, 32px); height: clamp(18px, 18cqh, 32px); font-size: clamp(8px, 7cqh, 13px); border-width: 2px; }
+.game-app .battle-select-body .seat-ordinal { font-size: clamp(9px, 8cqh, 16px); }
+.game-app .battle-select-body .seat-footer { padding: 1px clamp(3px, 4cqw, 7px); gap: 0; }
+.game-app .battle-select-body .seat-footer strong { font-size: clamp(7px, min(6.5cqh, 6cqw), 10px); }
+.game-app .battle-select-body .seat-footer > span { font-size: clamp(6px, min(5.4cqh, 5cqw), 8px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .battle-select-body .seat-team { font-size: 7px; padding: 0 4px; }
+.game-app .battle-select-body .seat-transform-hint { bottom: clamp(30px, 34cqh, 52px); font-size: clamp(6px, 6cqh, 8px); }
+@container (max-height: 100px) {
+  .game-app .battle-select-body .seat-footer > span, .game-app .battle-select-body .seat-ordinal, .game-app .battle-select-body .seat-transform-hint { display: none; }
+}
+
+/* Rules footer: one metal bar, the primary action on the right. */
+.game-app .play-screen .battle-select-footer { margin: 0; min-width: 0; flex-wrap: nowrap; gap: clamp(6px, 1vw, 12px); padding: clamp(3px, 0.8dvh, 7px) clamp(6px, 1vw, 12px); }
+.game-app .play-screen .battle-rule-controls { min-width: 0; gap: clamp(6px, 1.1vw, 15px); }
+.game-app .play-screen .battle-rule-controls label { gap: 4px; font-size: clamp(8px, 2.2dvh, 10px); white-space: nowrap; }
+.game-app .play-screen .battle-rule-controls select, .game-app .play-screen .items-switch-button { min-height: clamp(22px, 6.6dvh, 30px); padding: 1px 6px; font-size: clamp(9px, 2.5dvh, 11px); }
+.game-app .play-screen .battle-active-count { flex: none; white-space: nowrap; }
+.game-app .play-screen .battle-active-count strong { font-size: clamp(14px, 4.6dvh, 24px); }
+.game-app .play-screen :is(.battle-select-footer, .stage-ready-bar, .lan-foot) :is(.battle-next, .secondary) { flex: none; min-height: clamp(24px, 7.2dvh, 36px); padding-block: 2px; white-space: nowrap; }
+.game-app .play-screen :is(.battle-select-footer, .stage-ready-bar) .battle-next { font-size: clamp(11px, 3.2dvh, 15px); }
+.game-app .play-screen :is(.battle-select-footer, .stage-ready-bar) .secondary { padding-inline: clamp(8px, 1vw, 14px); font-size: clamp(9px, 2.4dvh, 12px); }
+.game-app .room-tools { flex: none; display: flex; align-items: center; gap: 6px; }
+/* Narrow footers keep every rule name as a tiny caption over its control. */
+@media (max-width: 900px) {
+  .game-app .play-screen .battle-active-count span { display: none; }
+  .game-app .play-screen .battle-rule-controls label { flex-direction: column; align-items: flex-start; gap: 1px; font-size: 7px; line-height: 1; letter-spacing: 0.4px; }
+  .game-app .play-screen .battle-rule-controls select, .game-app .play-screen .items-switch-button { min-height: clamp(20px, 5.6dvh, 26px); }
+}
+
+/* Footer popovers (LAN voice / friends) open above their button and take no layout space. */
+.game-app .screen-popover { position: relative; flex: none; }
+.game-app .screen-popover-toggle[aria-expanded="true"] { border-color: var(--game-gold); color: var(--game-gold); }
+.game-app .screen-popover-panel { position: absolute; left: 0; bottom: calc(100% + 10px); z-index: 25; box-sizing: border-box; width: min(560px, 86vw); max-height: 72dvh; overflow: auto; padding: 10px 12px; border: 2px ridge #94a6b7; background: linear-gradient(#101c30, #0a1322); box-shadow: 0 12px 34px #000d; text-align: left; }
+.game-app .screen-popover-panel > .voice-panel { margin: 0; padding: 0; border: 0; background: none; }
+.game-app .screen-popover-panel > .lan-friends { margin: 0; border: 0; background: none; flex-wrap: wrap; }
+
+/* ——— Stage select ——— */
+.game-app .stage-select-body { display: grid; grid-template-columns: minmax(0, 1fr) clamp(170px, 27vw, 400px); gap: var(--gap); }
+.game-app .play-screen .melee-stage-grid.battle-stage-grid { min-height: 0; height: 100%; margin: 0; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; gap: 8px; }
+.game-app .play-screen .melee-tile.battle-stage { container-type: size; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 0; }
+.game-app .play-screen .melee-tile.battle-stage:hover:not(:disabled) { transform: none; }
+.game-app .play-screen .melee-tile .battle-stage-image { height: auto; min-height: 0; }
+.game-app .play-screen .melee-tile .battle-stage-selected { right: 3px; bottom: 3px; padding: 1px 4px; font-size: clamp(6px, 7cqh, 9px); }
+.game-app .play-screen .melee-tile.battle-stage > strong { padding: clamp(1px, 4cqh, 5px) 3px; font-size: clamp(7px, min(11cqh, 6.4cqw), 13px); }
+.game-app .play-screen .melee-random-image > span { font-size: clamp(16px, 40cqh, 56px); }
+@container (max-height: 64px) { .game-app .play-screen .melee-tile .battle-stage-selected { display: none; } }
+
+.game-app .play-screen .melee-stage-detail { min-height: 0; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: stretch; gap: clamp(3px, 1.2dvh, 10px); padding: clamp(5px, 1.4dvh, 12px); }
+.game-app .play-screen .melee-preview { flex: 0 1 auto; width: 100%; height: auto; min-height: 0; aspect-ratio: 540 / 300; }
+.game-app .play-screen .melee-info { flex: none; gap: clamp(1px, 0.6dvh, 5px); }
+.game-app .play-screen .melee-info strong { font-size: clamp(14px, min(2.4vw, 5dvh), 30px); white-space: normal; }
+.game-app .play-screen .melee-info > span { white-space: normal; font-size: clamp(9px, 2.3dvh, 13px); line-height: 1.35; }
+.game-app .melee-limit { color: #74e6c6; font: clamp(7px, 1.8dvh, 9px) var(--mono); letter-spacing: 0.5px; }
+.game-app .play-screen .melee-random-button { flex: none; order: 3; margin-top: auto; align-self: flex-start; min-height: clamp(22px, 6.4dvh, 34px); padding: 2px 12px; }
+.game-app .play-screen .melee-stage-detail .lan-ready-list { flex: 0 1 auto; min-height: 0; margin: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); align-content: start; gap: 3px; }
+.game-app .play-screen .melee-stage-detail .lan-ready-list li { min-width: 0; gap: 5px; padding: clamp(1px, 0.6dvh, 5px) 6px; font-size: clamp(8px, 2dvh, 9px); line-height: 1.4; }
+.game-app .play-screen .melee-stage-detail .lan-ready-list :is(.lan-ready-name, .lan-ready-fighter) { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .play-screen .melee-stage-detail .lan-ready-list .lan-ready-state { flex: none; margin-left: auto; padding: 0 5px; }
+
+.game-app .play-screen .stage-ready-bar { min-width: 0; gap: clamp(6px, 1.2vw, 15px); padding: clamp(3px, 1dvh, 10px) clamp(8px, 1.4vw, 17px); }
+.game-app .play-screen .stage-ready-bar > .stage-ready-name { flex: 1 1 auto; min-width: 0; text-align: center; font-size: clamp(14px, 4.6dvh, 26px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .play-screen .stage-ready-bar > .stage-ready-note { flex: 0 1 auto; min-width: 0; font: normal 400 clamp(8px, 2.2dvh, 11px) / 1.3 Arial, sans-serif; text-transform: none; text-shadow: none; }
+.game-app .play-screen .stage-ready-note .network-status { display: block; margin: 0; color: #ffe9ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .play-screen .stage-ready-bar .battle-next { min-width: 0; }
+.game-app .play-screen .stage-ready-bar .load-progress-bar { flex: none; margin: 0; }
+@media (max-height: 520px) {
+  .game-app .play-screen .melee-stage-detail:has(.lan-ready-list) :is(.melee-info > span, .melee-limit) { display: none; }
+}
+@media (max-width: 1000px) {
+  .game-app .play-screen .stage-ready-bar:has(.stage-ready-note) > .stage-ready-name { display: none; }
+  .game-app .play-screen .stage-ready-bar > .stage-ready-note { flex: 1 1 auto; }
+}
+
+/* ——— LAN gateway ——— */
+.game-app .lan-gateway-body { display: grid; grid-template-columns: minmax(0, 44fr) minmax(0, 56fr); gap: var(--gap); }
+.game-app .play-screen .room-gateway { min-height: 0; max-width: none; margin: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: clamp(6px, 2.2dvh, 20px); padding: clamp(8px, 2.2dvh, 22px) clamp(10px, 1.8vw, 24px); text-align: left; }
+.game-app .room-gateway-intro { display: flex; align-items: center; gap: clamp(8px, 1.4vw, 16px); }
+.game-app .play-screen .room-gateway-mark { flex: none; font-size: clamp(26px, 10dvh, 64px); line-height: 1; }
+.game-app .room-gateway-intro p { margin: 0; color: #a1b3ca; font-size: clamp(10px, 2.5dvh, 13px); line-height: 1.4; }
+.game-app .play-screen .room-entry { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: clamp(4px, 1.6dvh, 14px); margin: 0; padding: clamp(6px, 2dvh, 18px) 0 0; border: 0; border-top: 2px ridge #65788e; background: none; }
+.game-app .play-screen .room-entry label { flex: none; gap: 3px; }
+.game-app .play-screen .room-entry input { min-height: clamp(26px, 7.6dvh, 44px); padding-block: 2px; font-size: clamp(12px, 3.2dvh, 15px); }
+.game-app .room-entry-action { display: flex; align-items: flex-end; gap: clamp(6px, 1vw, 12px); min-width: 0; }
+.game-app .room-entry-create { align-items: center; }
+.game-app .room-entry-create .battle-next { flex: 1 1 auto; min-height: clamp(30px, 10dvh, 58px); font-size: clamp(14px, 4.4dvh, 22px); }
+.game-app .room-entry-create small { flex: 0 1 38%; color: #8fa2c0; font-size: clamp(9px, 2.2dvh, 11px); line-height: 1.35; }
+.game-app .room-entry-join label { flex: 1 1 auto; min-width: 0; }
+.game-app .room-entry-join .battle-next { flex: none; width: auto; min-height: clamp(26px, 7.6dvh, 44px); }
+.game-app .play-screen .room-entry .or-divider { display: flex; align-items: center; gap: 10px; color: #6f83a1; font: italic 950 clamp(10px, 2.6dvh, 14px) Arial, sans-serif; }
+.game-app .play-screen .room-entry .or-divider::before, .game-app .play-screen .room-entry .or-divider::after { content: ''; flex: 1; height: 1px; background: #65788e66; }
+.game-app .play-screen .room-gateway > .lan-friends { flex: none; margin: 0; }
+@media (max-height: 460px) { .game-app .room-entry-create small, .game-app .play-screen .room-gateway-mark { display: none; } .game-app .room-gateway-intro p { font-size: 10px; } }
+
+.game-app .play-screen .room-browser { min-height: 0; margin: 0; padding: clamp(6px, 1.6dvh, 14px); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: clamp(4px, 1.2dvh, 10px); border: 3px ridge #a5b2c0; background: #152237; }
+.game-app .play-screen .room-browser-heading { font-size: clamp(10px, 2.6dvh, 13px); }
+.game-app .play-screen .room-browser-heading .secondary { min-height: clamp(22px, 6.4dvh, 32px); padding-block: 2px; }
+.game-app .play-screen .room-list { min-height: 0; margin: 0; overflow-y: auto; gap: clamp(4px, 1dvh, 8px); scrollbar-width: thin; }
+.game-app .play-screen .room-row { padding: clamp(4px, 1.2dvh, 10px) 10px; }
+.game-app .play-screen .room-row .battle-next { min-height: clamp(24px, 6.6dvh, 36px); padding-block: 2px; }
+.game-app .room-browser-empty { min-height: 0; margin: 0; display: grid; place-content: center; justify-items: center; gap: clamp(4px, 1.4dvh, 12px); padding: 10px 16px; border: 2px dashed #3c4d66; border-radius: 10px; color: #8fa2c0; font-size: clamp(10px, 2.6dvh, 13px); line-height: 1.45; text-align: center; }
+.game-app .room-browser-empty > span { font-size: clamp(22px, 9dvh, 48px); line-height: 1; }
+.game-app .room-browser-empty > p { margin: 0; }
+/* How a LAN battle goes, shown while the room list is empty on screens tall enough for it. */
+.game-app .room-steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 1.4vw, 18px); margin: clamp(8px, 3dvh, 28px) 0 0; padding: 0; text-align: left; }
+.game-app .room-steps li { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: clamp(8px, 1.6dvh, 14px); border: 1px solid #a6baff24; border-left: 3px solid var(--game-gold); background: #0f1a2ecc; }
+.game-app .room-steps b { flex: none; display: grid; place-items: center; width: clamp(24px, 4dvh, 36px); height: clamp(24px, 4dvh, 36px); border: 2px solid var(--game-gold); border-radius: 50%; color: var(--game-gold); font: italic 950 clamp(12px, 2dvh, 17px) Arial, sans-serif; }
+.game-app .room-steps span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.game-app .room-steps strong { color: #eef2f8; font: italic 900 clamp(12px, 2dvh, 16px) Arial, sans-serif; }
+.game-app .room-steps small { color: #8fa2c0; font-size: clamp(10px, 1.5dvh, 12px); line-height: 1.4; }
+@media (max-height: 620px) { .game-app .room-steps { display: none; } }
+.game-app .room-browser-error { margin: 0; align-self: start; color: #ffb077; font: 10px/1.6 var(--mono); }
+.game-app .play-screen .lan-foot { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 4px; }
+.game-app .play-screen .lan-foot p { margin: 0; min-width: 0; padding: 0; border: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(8px, 2dvh, 10px); }
+.game-app .play-screen .lan-foot .network-status { flex: 1 1 auto; }
+.game-app .play-screen .lan-foot .lan-warning { flex: 0 1 auto; }
+
+/* ——— Roulette quick setup: players only, fighters and stage roll on START ——— */
+.game-app .roulette-body { display: flex; flex-direction: column; gap: clamp(6px, 1.5dvh, 12px); overflow: auto; }
+.game-app .roulette-note { margin: 0; color: #9fb0c9; font: 11px Arial, sans-serif; }
+.game-app .roulette-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: clamp(4px, 1vw, 10px); }
+.game-app .roulette-seat { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #2a3a55; border-left: 5px solid var(--seat-color, #888); border-radius: 6px; background: #101828; }
+.game-app .roulette-seat.is-off { opacity: .55; }
+.game-app .roulette-seat-name { color: #ffcf40; font: italic 950 20px Arial, sans-serif; }
+.game-app .roulette-seat-control { display: flex; flex-direction: column; gap: 2px; color: #9fb0c9; font: 9px Arial, sans-serif; }
+.game-app .roulette-seat-control select { background: #0b1220; color: #e8eef7; border: 1px solid #2a3a55; border-radius: 4px; padding: 3px 6px; }
+.game-app .roulette-seat-status { margin-left: auto; color: #e8eef7; font: 10px Arial, sans-serif; white-space: nowrap; }
+.game-app .roulette-rules { display: flex; flex-wrap: wrap; align-items: end; gap: clamp(6px, 1.2vw, 14px); padding: 8px 10px; border: 1px solid #2a3a55; border-radius: 6px; background: #0d1524; }
+.game-app .roulette-rules label { display: flex; flex-direction: column; gap: 2px; color: #9fb0c9; font: 9px Arial, sans-serif; }
+.game-app .roulette-rules select { background: #0b1220; color: #e8eef7; border: 1px solid #2a3a55; border-radius: 4px; padding: 3px 6px; }
+.game-app .roulette-rules-summary { margin-left: auto; color: #ffcf40; font: 10px Arial, sans-serif; white-space: nowrap; }
+/* ——— Portrait / narrow fallback: stack the two-column bodies ——— */
+@media (max-aspect-ratio: 1/1) {
+  .game-app .battle-select-body { grid-template-rows: minmax(0, 1fr) auto; }
+  .game-app .battle-select-body .player-seat-grid { flex-wrap: wrap; }
+  .game-app .battle-select-body .player-seat, .game-app .battle-select-body .player-seat[data-control="off"] { flex: 1 1 calc(25% - 8px); height: clamp(72px, 12dvh, 130px); }
+  .game-app .roster-note { display: none; }
+  .game-app .play-screen .battle-select-footer, .game-app .play-screen .stage-ready-bar { flex-wrap: wrap; row-gap: 4px; }
+  .game-app .play-screen .battle-rule-controls { flex-wrap: wrap; row-gap: 4px; }
+  .game-app .stage-select-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .game-app .play-screen .melee-stage-detail { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; }
+  .game-app .play-screen .melee-preview { grid-row: 1 / span 2; }
+  .game-app .play-screen .melee-stage-detail .lan-ready-list { grid-column: 1 / -1; }
+  .game-app .lan-gateway-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .game-app .play-screen .lan-foot .lan-warning, .game-app .room-steps, .game-app .play-screen .room-gateway-intro, .game-app .room-entry-create small { display: none; }
+  .game-app .room-browser-empty { overflow: hidden; }
+  .game-app .play-screen .room-entry { padding-top: 0; border-top: 0; }
+  .game-app .roster-tray-head .seat-selection-hint { display: none; }
+  /* Header plate as two rows: BACK · title · settings, then the rules (and room chip) full width. */
+  .game-app .play-screen .battle-select-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "back logo system" "rules rules rules" "chip chip chip"; gap: 0; min-height: 0; padding: 0; }
+  .game-app .play-screen .battle-back { grid-area: back; margin: 0; }
+  .game-app .play-screen .battle-logo { grid-area: logo; justify-self: start; }
+  .game-app .play-screen .system-menu-header { grid-area: system; }
+  .game-app .play-screen .battle-rule-title { grid-area: rules; margin: 0; padding: 3px 8px; clip-path: none; font-size: 12px; }
+  .game-app .play-screen .room-chip { grid-area: chip; justify-content: center; padding-block: 2px; }
+}

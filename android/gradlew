@@ -1,0 +1,32 @@
+#!/bin/sh
+# Smash Web Android launcher: finds a Gradle 8.x binary and runs the build.
+# Prefers GRADLE_BIN, then this machine's cached distributions, then PATH.
+# Use: sh gradlew :app:assembleDebug
+set -eu
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+candidates=""
+if [ -n "${GRADLE_BIN:-}" ]; then
+  candidates="$GRADLE_BIN"
+fi
+for dist in "$HOME/.gradle/wrapper/dists/gradle-8.14.3-all"/*/gradle-8.14.3 \
+            "$HOME/.gradle/wrapper/dists/gradle-8.11.1-all"/*/gradle-8.11.1; do
+  if [ -x "$dist/bin/gradle" ]; then
+    candidates="$candidates $dist/bin/gradle"
+    break
+  fi
+done
+if command -v gradle >/dev/null 2>&1; then
+  candidates="$candidates $(command -v gradle)"
+fi
+
+for candidate in $candidates; do
+  if [ -x "$candidate" ]; then
+    # shellcheck disable=SC2086
+    exec "$candidate" -p "$HERE" "$@"
+  fi
+done
+
+echo "error: no Gradle 8.x found. Set GRADLE_BIN=/path/to/gradle or install" >&2
+echo "Android Studio / 'sdkmanager' SDK + a Gradle 8.9+ distribution, then retry." >&2
+exit 1

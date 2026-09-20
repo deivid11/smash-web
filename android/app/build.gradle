@@ -1,0 +1,91 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    // Compile/target Android 16 (API 36); minimum Android 7.1 (API 25) so Fire
+    // OS TV sticks/tablets install too. Newer APIs (device vibrators 31+,
+    // VibrationEffect 26+) are runtime-guarded in SmashPadBridge with handset
+    // fallbacks; the WebView on these devices is a modern Chromium build.
+    namespace 'dev.smashweb.play'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'dev.smashweb.play'
+        minSdk 25
+        targetSdk 36
+        // Every build is a newer version so the self-update channel can compare:
+        // minutes since the Unix epoch (fits an int until the 6th millennium),
+        // overridable with -PsmashVersionCode=N for reproducible rebuilds.
+        versionCode(project.hasProperty('smashVersionCode')
+                ? Integer.parseInt(project.property('smashVersionCode').toString())
+                : (int) (System.currentTimeMillis().intdiv(60000L)))
+        versionName new Date().format('yyyy.MM.dd-HHmm', TimeZone.getTimeZone('UTC'))
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    // Game host the shell loads and updates from. Machine-local on purpose: set
+    // `smash.originHost=your.host` in the ignored android/local.properties, or the
+    // SMASH_ORIGIN_HOST environment variable. No hostname is tracked in the repository.
+    def localProps = new Properties()
+    def localPropsFile = rootProject.file('local.properties')
+    if (localPropsFile.exists()) localPropsFile.withInputStream { localProps.load(it) }
+    def originHost = (System.getenv('SMASH_ORIGIN_HOST') ?: localProps.getProperty('smash.originHost') ?: '').trim()
+    if (!(originHost ==~ /[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?/)) {
+        throw new GradleException('Set smash.originHost in android/local.properties (or SMASH_ORIGIN_HOST) to the game host, e.g. play.example.org.')
+    }
+    // Visible build stamp: every error-page screenshot self-identifies its build.
+    def buildStamp = '"' + new Date().format('yyyy-MM-dd HH:mm', TimeZone.getTimeZone('UTC')) + 'Z"'
+    android.applicationVariants.all { variant ->
+        variant.buildConfigField('String', 'BUILD_STAMP', buildStamp)
+        variant.buildConfigField('String', 'ORIGIN_HOST', '"' + originHost + '"')
+    }
+}
+
+// The Android browser bundle (npm run android:build -> repository-root
+// dist-android/, relative asset base) is copied into the APK's assets at build
+// time; MainActivity serves it at the hosted https origin. dist-android/ itself
+// is never committed; a missing bundle fails here with the exact command to run
+// instead of packaging a stale or empty shell.
+def generatedAssets = layout.buildDirectory.dir('generated/smashAssets')
+android.sourceSets.main.assets.srcDir(generatedAssets)
+def webDist = new File(rootDir, '../dist-android')
+// Separate always-run check: a Copy task whose source is missing is skipped as
+// NO-SOURCE before any doFirst runs, which once packaged an APK with no game.
+tasks.register('checkWebDist') {
+    doLast {
+        for (required in ['play.html', 'wasm/melee-gameplay.wasm', 'web-bundle.json']) {
+            if (!new File(webDist, required).isFile()) {
+                throw new GradleException(
+                    "Missing Android web bundle file dist-android/${required}. Run `npm run android:build` from the repository root first.")
+            }
+        }
+    }
+}
+// Stale hashed bundles must never accumulate across rebuilds (each vite build
+// emits new hashes); the staging dir is cleaned before every copy.
+tasks.register('cleanSmashAssets', Delete) {
+    delete generatedAssets
+}
+tasks.register('copyWebDist', Copy) {
+    dependsOn('checkWebDist', 'cleanSmashAssets')
+    from webDist
+    into generatedAssets.map { it.dir('dist') }
+}
+tasks.named('preBuild').configure { dependsOn('copyWebDist') }
+
+// No AndroidX UI dependencies: the shell is one Activity + one WebView on
+// framework APIs only, keeping the APK lean and the build offline-capable.
+dependencies {
+}

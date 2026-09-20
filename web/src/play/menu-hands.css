@@ -1,0 +1,32 @@
+/* Smash-style floating hands (web/src/play/menu-hands.ts). The layer never
+   takes pointer events: mouse and touch keep working underneath. */
+.game-app .menu-hands { position: fixed; inset: 0; z-index: 55; pointer-events: none; overflow: hidden; }
+.game-app .menu-hands[hidden] { display: none; }
+.game-app.has-menu-hands .menu-layer { padding-bottom: 48px; }
+
+.game-app .menu-hand { --hand-color: #aeb8c8; --hand-ink: #0b1020; position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
+/* The fingertip is the hotspot: it sits exactly on the element's origin. */
+.game-app .menu-hand-glove { position: absolute; left: -12.5px; top: -1px; width: 50px; height: 62px; overflow: visible; transform: rotate(-24deg); transform-origin: 12.5px 1px; filter: drop-shadow(3px 5px 0 #0007); }
+.game-app .menu-hand-outline { fill: #0b1020; stroke: #0b1020; stroke-width: 5; stroke-linejoin: round; }
+.game-app .menu-hand-fill { fill: #f7f9fc; }
+.game-app .menu-hand-crease { fill: none; stroke: #9aa7ba; stroke-width: 1.8; stroke-linecap: round; }
+.game-app .menu-hand-cuff { fill: var(--hand-color); stroke: #0b1020; stroke-width: 2.5; }
+.game-app .menu-hand-tag { position: absolute; left: 15px; top: 47px; padding: 2px 6px 3px; border: 2px solid #0b1020; border-radius: 9px; background: var(--hand-color); color: var(--hand-ink); font: italic 900 12px/1 Arial, sans-serif; letter-spacing: -.2px; white-space: nowrap; box-shadow: 2px 2px 0 #0008; }
+/* A carried seat token (Melee's CPU coin) rides next to the fingertip. */
+.game-app .menu-hand-token { --token-color: #aeb8c8; --token-ink: #0b1020; position: absolute; left: -44px; top: 10px; display: grid; place-items: center; width: 36px; height: 36px; border: 3px solid #0b1020; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffffb0, transparent 42%), var(--token-color); color: var(--token-ink); font: italic 950 11px/1 Arial, sans-serif; box-shadow: 2px 3px 0 #0008; }
+.game-app .menu-hand-token[hidden] { display: none; }
+.game-app .menu-hand.is-pressing .menu-hand-glove { animation: menu-hand-tap .16s ease-out; }
+@keyframes menu-hand-tap { 40% { transform: rotate(-24deg) scale(.84); } 100% { transform: rotate(-24deg) scale(1); } }
+
+/* Whatever a hand points at lights up in that player's colour. */
+.game-app [data-hand-hover] { outline: 3px solid var(--hand-hover, #fff) !important; outline-offset: -3px; filter: brightness(1.14); }
+.game-app .roster-grid [data-hand-hover] { z-index: 2; }
+/* The hands already show where focus is; a second gold ring would lag behind. */
+.game-app.has-menu-hands :is(.battle-select, .stage-select) :is(button, a, input, select, summary):focus { outline: none; }
+
+.game-app .menu-hands-legend { position: absolute; left: 50%; bottom: calc(8px + env(safe-area-inset-bottom)); display: flex; gap: 14px; max-width: calc(100vw - 16px); padding: 5px 14px; overflow: hidden; border: 2px solid #ffffff30; border-radius: 999px; background: #070c18e0; color: #dfe6f2; font: italic 800 11px/20px Arial, sans-serif; letter-spacing: .4px; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 3px 0 #0009; }
+.game-app .menu-hands-legend b { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-right: 5px; padding: 0 5px; border-radius: 10px; background: #eef2f8; color: #0b1020; font: normal 900 11px/1 Arial, sans-serif; }
+@media (max-width: 640px) {
+  .game-app .menu-hands-legend { gap: 8px; padding-inline: 10px; font-size: 9px; }
+  .game-app .menu-hands-legend b { min-width: 17px; height: 17px; font-size: 9px; }
+}

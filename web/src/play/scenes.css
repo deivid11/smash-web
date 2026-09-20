@@ -1,0 +1,1180 @@
+/* Immersive game presentation. Runtime canvas ownership stays in GameSession;
+   only menu content scrolls, never the full-screen match surface. */
+.game-app {
+  --game-navy: #080d1b;
+  --game-panel: #111a2c;
+  --game-red: #ff3d52;
+  --game-gold: #ffe466;
+  --game-orange: #ff9f43;
+  --game-white: #f5f6ff;
+  --game-muted: #96a4bb;
+  --touch-size: 48px;
+  --touch-gap: 6px;
+  --touch-edge: 20px;
+  --touch-bottom: calc(128px + env(safe-area-inset-bottom));
+  --mint: var(--game-gold);
+  --text: var(--game-white);
+  --muted: var(--game-muted);
+  --line: #a4baff24;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--game-white);
+  background: var(--game-navy);
+  font-family: Inter, "Arial", system-ui, sans-serif;
+}
+.game-app *, .game-app *::before, .game-app *::after { box-sizing: border-box; }
+.game-app button, .game-app a, .game-app input, .game-app select { -webkit-tap-highlight-color: transparent; }
+.game-app button:disabled { cursor: not-allowed; opacity: .42; }
+.game-app :is(button, a, input, select, summary):focus-visible { outline: 3px solid var(--game-gold); outline-offset: 4px; }
+/* Gamepad navigation moves real DOM focus, but programmatic focus does not always
+   match :focus-visible. Mirror the same ring while the last input was a controller. */
+.game-app.gamepad-focus :is(button, a, input, select, summary):focus { outline: 3px solid var(--game-gold); outline-offset: 4px; }
+.game-app .play-shell { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; padding: 0; margin: 0; }
+.game-app .play-header {
+  position: relative; z-index: 20; flex: 0 0 58px; height: 58px;
+  padding: 0 clamp(20px, 3.5vw, 64px); gap: 20px;
+  background: #080d1bf2; border-bottom: 1px solid #afc3ff17;
+}
+.game-app .brand { color: #fff; font-size: 23px; font-weight: 950; font-style: italic; letter-spacing: -1.3px; }
+.game-app .brand span { color: var(--game-red); font-weight: 950; margin-left: 1px; }
+.game-app .prototype-badge { border: 0; border-left: 2px solid var(--game-red); border-radius: 0; background: transparent; color: var(--game-muted); font-size: 8px; letter-spacing: 1.8px; padding: 3px 10px; }
+.game-app .play-header nav { gap: 22px; font-size: 10px; font-weight: 650; color: #b8c2d5; }
+.game-app .play-header a:hover { color: var(--game-gold); }
+.game-app .menu-layer {
+  position: relative; z-index: 10; height: 100%; min-height: 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  padding: 0 clamp(20px, 3.5vw, 64px) 28px;
+  background:
+    linear-gradient(115deg, #080d1bf2 15%, #10172cf5 55%, #171529ed),
+    repeating-linear-gradient(-40deg, transparent 0 90px, #ffffff02 90px 92px);
+  scrollbar-width: thin; scrollbar-color: #49506d #090f1e;
+}
+.game-app .menu-layer::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 88% 7%, #ff3d5214, transparent 45%), radial-gradient(ellipse at 3% 80%, #377bff0c, transparent 50%);
+}
+.game-app .scene-navigation {
+  display: flex; align-items: stretch; flex-shrink: 0; gap: 8px;
+  max-width: 1500px; margin: 0 auto 24px; padding: 14px 0 0;
+  border-bottom: 1px solid #adc2ff1f;
+}
+.game-app .scene-navigation button {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  padding: 13px 20px 15px; color: #8d9bb2; border: 0; border-radius: 0;
+  background: transparent; font-size: 12px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 1.3px; white-space: nowrap;
+}
+.game-app .scene-navigation button span { color: #556784; font: 9px var(--mono); }
+.game-app .scene-navigation button::after { content: ""; position: absolute; height: 3px; left: 12px; right: 12px; bottom: -1px; background: transparent; transform: skewX(-25deg); }
+.game-app .scene-navigation button.selected { color: #fff; background: linear-gradient(0deg, #ff3d5214, transparent); }
+.game-app .scene-navigation button.selected::after { background: var(--game-red); box-shadow: 0 0 20px #ff3d5244; }
+.game-app .scene-navigation button.selected span { color: var(--game-red); }
+.game-app .scene-navigation button:hover:not(:disabled) { color: var(--game-gold); }
+.game-app .scene-navigation button:last-child { margin-left: auto; color: var(--game-gold); }
+.game-app .selection-scene { width: 100%; max-width: 1500px; margin: 0 auto; padding: 0; border: 0; border-radius: 0; background: none; }
+.game-app .scene-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 0 0 24px; }
+.game-app .scene-heading h2 {
+  margin: 0; max-width: 1150px; color: #fff;
+  font-size: clamp(36px, 5.2vw, 78px); font-weight: 950; font-style: italic;
+  line-height: .98; letter-spacing: -.055em; text-transform: uppercase;
+  text-shadow: 0 4px 0 #0003;
+}
+.game-app .scene-heading h2 > span { color: var(--game-red); }
+.game-app .scene-kicker { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font: 9px var(--mono); color: #b4c0d4; letter-spacing: 2.5px; }
+.game-app .scene-kicker > span { display: block; width: 22px; height: 3px; background: var(--game-red); transform: skewX(-25deg); }
+.game-app .scene-description { margin: 10px 0 0; color: #8c9db7; font-size: 11px; letter-spacing: .25px; line-height: 1.7; }
+.game-app .scene-stamp { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; padding: 0 4px 0 25px; border-left: 1px solid #a8baff22; transform: skewY(-4deg); }
+.game-app .scene-stamp > span { color: #7588a6; font: 8px var(--mono); letter-spacing: 2px; }
+.game-app .scene-stamp strong { color: #ffffff22; font-size: clamp(22px, 3vw, 44px); font-weight: 950; font-style: italic; line-height: 1.3; }
+.game-app .scene-stamp small { color: #7588a6; font: 7px var(--mono); letter-spacing: 1px; }
+
+/* Character art is deliberately the dominant element, not a small dashboard icon. */
+.game-app .character-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; padding: 0 6px; }
+.game-app .character-tile {
+  --fighter-accent: #ffb155; --fighter-dark: #382325;
+  position: relative; isolation: isolate; min-width: 0; height: clamp(280px, 43dvh, 520px);
+  display: flex; flex-direction: column; align-items: stretch;
+  margin: 0; padding: 22px 10% 0; border: 0; border-radius: 0;
+  color: #fff; background: transparent; text-align: left;
+  transition: transform .18s ease, filter .18s ease;
+}
+.game-app .character-tile.coral { --fighter-accent: #ff5365; --fighter-dark: #321827; }
+.game-app .character-tile.water { --fighter-accent: #6cdaee; --fighter-dark: #112b40; }
+.game-app .character-tile.orange { --fighter-accent: #ffc060; --fighter-dark: #48280f; }
+.game-app .character-tile.electric { --fighter-accent: #ffe35c; --fighter-dark: #3b3012; }
+.game-app .character-tile.pink { --fighter-accent: #ff9ad2; --fighter-dark: #3a1a30; }
+.game-app .character-tile::before {
+  content: ""; position: absolute; inset: 0; z-index: -2;
+  clip-path: polygon(7% 0, 100% 0, 93% 100%, 0 100%);
+  background: linear-gradient(150deg, #fff2, transparent 38%), linear-gradient(145deg, var(--fighter-dark), #111929 75%);
+  box-shadow: inset 0 0 0 1px #ffffff18;
+}
+.game-app .character-tile::after {
+  content: ""; position: absolute; z-index: -1; top: 0; right: 7%; bottom: 0; width: 3px;
+  background: var(--fighter-accent); transform: skewX(-5deg); transform-origin: bottom;
+  opacity: .3; transition: opacity .18s ease;
+}
+.game-app .character-tile:hover:not(:disabled) { transform: translateY(-5px); filter: brightness(1.12); }
+.game-app .character-tile[aria-pressed="true"] { filter: drop-shadow(0 5px 20px #0006); }
+.game-app .character-tile[aria-pressed="true"]::before { background: linear-gradient(135deg, #ffffff14, transparent 55%), linear-gradient(145deg, var(--fighter-dark), #111929 75%); }
+.game-app .character-tile[aria-pressed="true"]::after { opacity: 1; box-shadow: 0 0 20px var(--fighter-accent); }
+.game-app .character-tile:focus-visible { outline: 3px solid var(--game-gold); outline-offset: 5px; }
+.game-app .fighter-number { position: absolute; left: 14%; top: 18%; z-index: -1; color: #ffffff06; font-size: clamp(110px, 19vw, 280px); font-weight: 1000; font-style: italic; line-height: 1; letter-spacing: -.1em; pointer-events: none; }
+.game-app .tile-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #ffffff99; font: 8px var(--mono); letter-spacing: 1.1px; }
+.game-app .tile-slot { display: inline-grid; place-items: center; min-width: 34px; height: 27px; padding: 0 7px; color: #b7bfd1; background: #ffffff10; font: italic 950 15px Arial, sans-serif; transform: skewX(-10deg); }
+.game-app .character-tile[aria-pressed="true"] .tile-slot { color: #091020; background: var(--fighter-accent); }
+.game-app .fighter-art { position: absolute; z-index: 0; inset: 14px 0 36px; overflow: hidden; clip-path: polygon(7% 0, 100% 0, 93% 100%, 0 100%); pointer-events: none; }
+.game-app .fighter-art-ring { position: absolute; width: 78%; aspect-ratio: 1; left: 10%; top: 8%; border-radius: 50%; border: 1px solid #ffffff10; box-shadow: 0 0 0 35px #ffffff03, 0 0 0 70px #ffffff02; }
+.game-app .fighter-portrait { position: absolute; width: 113%; max-width: none; height: 111%; left: -4%; bottom: -7%; object-fit: contain; object-position: center bottom; filter: drop-shadow(8px 14px 8px #0005); transition: transform .25s ease; }
+.game-app .character-tile:hover:not(:disabled) .fighter-portrait, .game-app .character-tile[aria-pressed="true"] .fighter-portrait { transform: scale(1.045); }
+.game-app .fighter-mark { position: absolute; inset: 8% 0 16%; display: grid; place-items: center; color: var(--fighter-accent); font-size: clamp(75px, 13vw, 180px); font-weight: 950; font-style: italic; opacity: .55; text-shadow: 5px 7px 0 #0003; transform: rotate(-8deg); }
+.game-app .fighter-caption { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: end; margin-top: auto; padding: 38px 0 14px; isolation: isolate; }
+.game-app .fighter-caption::before { content: ""; position: absolute; z-index: -1; inset: 0 -10% -8px; background: linear-gradient(transparent, #080d1bf2 48%); transform: skewX(-5deg); pointer-events: none; }
+.game-app .fighter-caption strong { font-size: clamp(32px, 4.7vw, 72px); font-weight: 950; font-style: italic; text-transform: uppercase; letter-spacing: -.055em; line-height: .98; text-shadow: 3px 4px 0 #0005; }
+.game-app .fighter-style { margin-top: 9px; color: var(--fighter-accent); font-size: 10px; line-height: 1.5; }
+.game-app .fighter-caption small { margin-top: 5px; color: #8c9ab1; font: 7px/1.5 var(--mono); letter-spacing: .35px; }
+.game-app .tile-selection { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; margin: 0 -2% 0 -7%; padding: 8px 12px; border-top: 1px solid #ffffff1a; color: #91a0b8; font: 8px var(--mono); letter-spacing: 1.1px; }
+.game-app .tile-selection > span { font-size: 14px; }
+.game-app .character-tile[aria-pressed="true"] .tile-selection { background: var(--fighter-accent); border-color: transparent; color: #080d1b; font-weight: 800; transform: skewX(-5deg); }
+.game-app .scene-actions { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 23px; }
+.game-app .selection-readout { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 12px; row-gap: 5px; }
+.game-app .selection-readout-label { color: #8393ad; font: 8px var(--mono); letter-spacing: 1.3px; }
+.game-app .selection-readout strong { color: #fff; font: italic 900 20px Arial, sans-serif; text-transform: uppercase; }
+.game-app .selection-readout-hint { grid-column: 1 / -1; color: #6d7e9a; font-size: 9px; line-height: 1.6; }
+.game-app .ready-action { display: flex; align-items: center; gap: 20px; }
+.game-app .ready-to-fight { color: #ffffff2e; font: italic 950 clamp(15px, 2vw, 28px) Arial, sans-serif; letter-spacing: -.8px; white-space: nowrap; }
+.game-app .primary {
+  position: relative; min-height: 46px; padding: 13px 28px;
+  background: linear-gradient(110deg, #ffe769, #ffba48); color: #0b1020;
+  border: 0; border-radius: 2px; box-shadow: 4px 4px 0 #0003;
+  font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: .7px;
+  transition: filter .15s ease, transform .15s ease;
+}
+.game-app .primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-2px); }
+.game-app .primary:active:not(:disabled) { transform: translateY(1px); }
+.game-app .secondary { min-height: 40px; border: 1px solid #7485a23d; border-radius: 2px; background: #172136; color: #bdc9dd; padding: 11px 17px; font-size: 11px; font-weight: 750; }
+.game-app .secondary:hover:not(:disabled) { color: #fff; border-color: #a7b4ce77; }
+
+/* Stage stills are produced from the local renderer. Diagrams are honest fallbacks. */
+.game-app .stage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.game-app .stage-tile { --stage-accent: #ffcd67; position: relative; min-width: 0; padding: 0; overflow: hidden; border: 1px solid #ffffff1d; border-radius: 3px; background: #101a2d; color: #fff; text-align: left; transition: transform .18s ease, border-color .18s ease; }
+.game-app .stage-tile.stage-final { --stage-accent: #c599ff; }
+.game-app .stage-tile[aria-pressed="true"] { border-color: var(--game-gold); box-shadow: 0 0 0 2px #ffe46640, 0 14px 40px #0004; }
+.game-app .stage-tile:hover:not(:disabled) { transform: translateY(-4px); border-color: #fff8; }
+.game-app .stage-art { position: relative; display: block; height: clamp(190px, 35dvh, 400px); overflow: hidden; background: radial-gradient(ellipse at 50% 30%, #2b354d, #0e172a 75%); color: var(--stage-accent); }
+.game-app .stage-final .stage-art { background: radial-gradient(ellipse at 50% 30%, #362c56, #121126 75%); }
+.game-app .stage-art > img { width: 100%; height: 100%; object-fit: cover; transition: transform .3s ease; }
+.game-app .stage-tile:hover:not(:disabled) .stage-art > img { transform: scale(1.035); }
+.game-app .stage-schematic { position: absolute; inset: 5% 7%; width: 86%; height: 90%; filter: drop-shadow(0 10px 12px #0006); }
+.game-app .stage-art-shade { position: absolute; inset: 0; background: linear-gradient(#060b1833, transparent 50%, #0b1020dd); }
+.game-app .stage-coordinate { position: absolute; left: 18px; top: 16px; font: 9px var(--mono); color: #ffffff9c; letter-spacing: 2px; }
+.game-app .stage-platform-count { position: absolute; left: 18px; bottom: 16px; padding: 6px 8px; background: #080d1ba8; border-left: 2px solid var(--stage-accent); font: 8px var(--mono); color: #c3cee0; letter-spacing: 1px; }
+.game-app .stage-caption { display: block; padding: 18px 20px 20px; border-top: 1px solid #ffffff0d; }
+.game-app .stage-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.game-app .stage-title strong { font-size: clamp(21px, 2.5vw, 37px); font-weight: 950; font-style: italic; text-transform: uppercase; letter-spacing: -.8px; line-height: 1; }
+.game-app .stage-selected { color: #7c8fae; font: 8px var(--mono); white-space: nowrap; }
+.game-app .stage-tile[aria-pressed="true"] .stage-selected { color: var(--game-gold); }
+.game-app .stage-caption > small { display: block; margin-top: 10px; color: #8b9cb7; font-size: 10px; line-height: 1.7; }
+.game-app .scene-provenance { margin: 16px 0 0; color: #667996; font: 8px/1.7 var(--mono); }
+
+/* Menu settings read as a compact game setup strip, not application widgets. */
+.game-app .play-toolbar { position: relative; z-index: 15; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; width: 100%; max-width: 1500px; margin: 23px auto 0; padding: 18px 0; border-top: 1px solid #b2c5ff1b; }
+.game-app .setup-fields, .game-app .match-actions, .game-app .audio-settings { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.game-app .setup-fields { gap: 14px; }
+.game-app .setup-fields > label, .game-app .play-toolbar > label:not(.check), .game-app .room-entry label, .game-app .room-rules label { display: flex; flex-direction: column; gap: 6px; color: #778ba8; font: 8px var(--mono); letter-spacing: 1.1px; }
+.game-app .play-toolbar select, .game-app .room-rules select, .game-app .room-entry input { min-height: 37px; max-width: 100%; padding: 9px 11px; border: 1px solid #576c8d55; border-radius: 2px; color: #dce5f5; background: #101a2e; font: 11px Arial, sans-serif; }
+.game-app .play-toolbar button { min-height: 35px; padding: 9px 12px; color: #c1cce1; background: #142038; border: 1px solid #5d709044; border-radius: 2px; font-size: 10px; font-weight: 750; }
+.game-app .play-toolbar button:hover:not(:disabled) { border-color: #ffd16677; color: var(--game-gold); }
+.game-app .play-toolbar .check { margin: 0; padding: 0; color: #a2afc6; font-size: 9px; white-space: nowrap; }
+.game-app .play-toolbar input[type="checkbox"] { width: 13px; height: 13px; margin: 0; accent-color: var(--game-gold); }
+.game-app .music-volume { display: flex; flex-direction: column; gap: 5px; color: #7185a1; font: 7px var(--mono); letter-spacing: 1px; }
+.game-app .music-volume input { width: 80px; height: 12px; accent-color: var(--game-gold); }
+.game-app #walk-mode[aria-pressed="true"] { color: var(--game-gold); border-color: #ffe46688; background: #3c321e; }
+.game-app .load-progress, .game-app .audio-warning { position: relative; z-index: 10; max-width: 1500px; margin: 8px auto; color: #6c809f; font: 8px/1.7 var(--mono); overflow-wrap: anywhere; }
+.game-app .audio-warning { color: #ffbd74; }
+.game-app .controls-guide, .game-app .powers-guide, .game-app .scope-details { max-width: 1500px; margin: 8px auto 0; padding: 10px 0; border: 0; border-top: 1px solid #7389b01f; border-radius: 0; background: transparent; color: #8799b3; font-size: 10px; line-height: 1.8; }
+.game-app :is(.controls-guide, .powers-guide, .scope-details) summary { cursor: pointer; color: #95a7c2; font-size: 9px; }
+.game-app :is(.controls-guide, .powers-guide, .scope-details) p { color: #8799b3; font-size: 10px; }
+.game-app :is(.controls-guide, .powers-guide, .scope-details) strong { color: #d1dbef; }
+
+/* The match is the viewport. All chrome is layered over, never below, WebGL. */
+.game-app .arena { position: fixed; z-index: 0; inset: 0; width: 100%; height: 100vh; height: 100dvh; min-height: 0; aspect-ratio: auto; border: 0; border-radius: 0; background: #080d1b; overflow: hidden; }
+.game-app .canvas-host { position: absolute; inset: 0; }
+.game-app #play-canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+.game-app .arena-chrome { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.game-app .arena-chrome::before { content: ""; position: absolute; inset: 0; background: linear-gradient(#0306119e, transparent 20%, transparent 70%, #030611b8); pointer-events: none; }
+.game-app .arena-chrome button, .game-app .arena-chrome input, .game-app .arena-chrome select, .game-app .center-overlay { pointer-events: auto; }
+.game-app:not(.scene-arena) .arena-chrome { visibility: hidden; }
+.game-app.scene-arena .play-header, .game-app.in-match .play-header, .game-app.scene-arena .scene-navigation, .game-app.in-match .scene-navigation { display: none; }
+.game-app.scene-arena .menu-layer { background: transparent; pointer-events: none; padding: 0; overflow: hidden; }
+.game-app.scene-arena .menu-layer::before { display: none; }
+.game-app .match-top { position: absolute; left: 30px; right: 30px; top: max(22px, env(safe-area-inset-top)); display: flex; align-items: start; justify-content: start; gap: 14px; margin: 0; pointer-events: none; }
+.game-app .match-top > div:first-child { max-width: 31%; }
+.game-app .match-top .eyebrow { margin-bottom: 6px; color: #c2cde3bb; font-size: 8px; letter-spacing: 1.1px; }
+.game-app .match-top h1 { font: italic 900 19px Arial, sans-serif; letter-spacing: -.3px; text-transform: uppercase; text-shadow: 0 2px 6px #000; }
+.game-app .clock { position: absolute; left: 50%; top: -5px; transform: translateX(-50%); color: #fff; background: linear-gradient(#090e20ee, #090e2066); padding: 8px 30px 11px; border-bottom: 2px solid var(--game-gold); font: italic 900 34px Arial, sans-serif; letter-spacing: -.8px; text-shadow: 0 2px 0 #0008; }
+.game-app .game-status { min-width: 0; margin-top: 2px; padding: 5px 8px; border: 1px solid #ffffff22; border-radius: 2px; background: #080d1ba6; color: #e4ebfa; font: 7px var(--mono); letter-spacing: 1px; }
+.game-app .fighters-hud { position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: min(800px, calc(100% - 64px)); padding: 0; border: 0; border-radius: 0; background: transparent; }
+.game-app .fighters-hud.count-3 { width: min(1060px, calc(100% - 64px)); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.game-app .fighters-hud.count-4 { width: min(1220px, calc(100% - 64px)); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.game-app .fighter-card { --player-color: #ff5367; position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 101px; padding: 13px 18px 10px; border: 0; border-bottom: 4px solid var(--player-color); color: #fff; background: linear-gradient(110deg, #0a1021f0, #151e32c9); box-shadow: 0 8px 25px #0005; }
+.game-app .fighter-card.player-two { --player-color: #72a7ff; }
+.game-app .fighter-card.player-three { --player-color: #ffdc67; }
+.game-app .fighter-card.player-four { --player-color: #74e6c6; }
+.game-app .fighter-card::before { content: ""; position: absolute; top: 0; left: 0; width: 35%; height: 2px; background: var(--player-color); opacity: .75; }
+.game-app .fighter-card > div:first-child { min-width: 0; gap: 3px; }
+.game-app .fighter-card .player-label { color: var(--player-color); font: 8px var(--mono); letter-spacing: 1.3px; }
+.game-app .fighter-card strong { display: block; color: #fff; font: italic 950 clamp(17px, 2.1vw, 28px) Arial, sans-serif; letter-spacing: -.7px; line-height: 1; }
+.game-app .stock-dots { color: var(--player-color); font-size: 10px; line-height: 1; min-height: 11px; letter-spacing: 2px; }
+/* King of the Hill scoreboard: zone chips, team/leader score and the shift
+   countdown ride above the fighter cards, clear of thumbs and touch zones. */
+.game-app .hill-hud { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100vw - 32px); padding: 6px 10px; border: 1px solid #ffe46655; border-radius: 3px; background: #080d1bd9; color: #e4ebfa; font: 800 10px Arial, sans-serif; letter-spacing: .5px; white-space: nowrap; }
+.game-app .fighters-hud.hud-minimal { display: block; width: auto; }
+/* Minimal HUD: one line of zone state pinned just above the controls, instead of
+   the stacked panel that floats over the middle of a phone screen. */
+.game-app .hill-hud.compact { bottom: 0; flex-wrap: nowrap; gap: 5px; max-width: calc(100vw - 12px); padding: 3px 7px; font-size: 9px; }
+.game-app .hill-hud.compact .hill-zone { gap: 4px; padding: 2px 5px; }
+.game-app .hill-hud.compact .hill-zone > strong { width: 15px; height: 15px; font-size: 9px; }
+.game-app .hill-hud.compact .hill-zone > span { font-size: 8px; }
+.game-app .hill-hud.compact :is(.hill-teams, .hill-leader) { font-size: 9px; }
+.game-app .hill-hud.compact .hill-shift { font-size: 7px; letter-spacing: .5px; }
+.game-app .hill-zone { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #ffffff2a; border-radius: 2px; background: #ffffff0d; }
+.game-app .hill-zone { position: relative; overflow: hidden; }
+/* Capture bar: fills along the chip while somebody is taking the zone. */
+.game-app .hill-capture { position: absolute; left: 0; bottom: 0; height: 2px; width: var(--capture); background: currentColor; opacity: .85; }
+.game-app .hill-zone[data-capturing] > span { color: #ffe9a0; }
+.game-app .hill-zone > strong { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--game-gold); color: #0b1020; font-size: 11px; }
+.game-app #hill-zone-B > strong { background: #59c2ff; }
+.game-app .hill-zone > span { color: #a9bccd; font-size: 9px; }
+.game-app .hill-zone[data-holder]:not([data-holder="none"]) > span { color: #ffe9a0; }
+.game-app .hill-teams, .game-app .hill-leader { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+.game-app .hill-shift { color: #8fa3c0; font: 8px var(--mono); letter-spacing: 1px; }
+.game-app .hill-points { display: inline-flex; align-items: center; gap: 5px; color: var(--game-gold); font: 900 11px Arial, sans-serif; }
+.game-app .hill-team-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #ffffff88; }
+.game-app .hill-lives-note { align-self: center; color: var(--game-gold); font: 900 11px Arial, sans-serif; letter-spacing: .5px; }
+.game-app .shield-meter, .game-app .charge-meter { width: 64px; height: 5px; accent-color: var(--player-color); }
+.game-app .combat-state { color: var(--player-color); font: 6px/1.3 var(--mono); min-height: 0; }
+.game-app .combat-state:empty { display: none; }
+.game-app .percent { color: #fff; font: italic 950 clamp(32px, 4.2vw, 62px)/1 Arial, sans-serif; letter-spacing: -3px; text-shadow: 2px 3px 0 #000b; white-space: nowrap; }
+.game-app .percent span { font-size: .4em; letter-spacing: -1px; margin-left: 2px; }
+.game-app .nana-percent { display: block; margin-top: 2px; color: #9fd8ff; font-size: .3em; letter-spacing: 0; }
+.game-app .overhead-nana { display: block; color: #cfeaff; font-size: 10px; }
+.game-app .hud-portrait { position: absolute; z-index: -1; left: -4px; bottom: 0; width: 95px; height: 123px; object-fit: contain; object-position: center bottom; pointer-events: none; }
+.game-app .fighter-card:has(.hud-portrait) { padding-left: 84px; }
+.game-app .hud-center { position: absolute; left: 0; right: 0; bottom: -13px; display: flex; flex-direction: row; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 0; margin: 0; color: #b2bfd666; font: 6px var(--mono); letter-spacing: .6px; }
+.game-app .hud-center small { color: #9dafcb55; font-size: 6px; }
+.game-app .fighter-tag { padding: 3px 6px; border: 0; border-radius: 2px; font: 800 8px var(--mono); box-shadow: 0 2px 6px #0005; }
+.game-app .tag-one { background: #ff5367; color: #fff; }.game-app .tag-two { background: #72a7ff; color: #071126; }.game-app .tag-three { background: #ffdc67; color: #281b02; }.game-app .tag-four { background: #74e6c6; color: #052219; }
+.game-app .center-overlay { z-index: 30; background: #030712a8; backdrop-filter: blur(9px); }
+/* Let the native KO flash/beam play before the results backdrop obscures it.
+   Presentation only: the result and authoritative match end are already final. */
+.game-app .center-overlay.ending-overlay { animation: ko-result-reveal 650ms both; }
+@keyframes ko-result-reveal { 0%, 70% { opacity: 0; visibility: hidden; } 100% { opacity: 1; visibility: visible; } }
+@media (prefers-reduced-motion: reduce) { .game-app .center-overlay.ending-overlay { animation-timing-function: steps(1, end); } }
+.game-app .overlay-card { width: min(540px, calc(100% - 40px)); max-width: 540px; padding: 40px; border: 1px solid #ffffff29; border-top: 4px solid var(--game-red); border-radius: 2px; background: linear-gradient(140deg, #172036f5, #080e1df5); box-shadow: 0 35px 120px #0009; }
+.game-app .overlay-card .eyebrow { color: var(--game-gold); letter-spacing: 2px; font-size: 9px; }
+.game-app .overlay-card h2 { color: #fff; font: italic 950 clamp(32px, 5vw, 57px)/.98 Arial, sans-serif; letter-spacing: -2px; text-transform: uppercase; }
+.game-app .overlay-card p:not(.eyebrow) { color: #a7b6d0; font-size: 12px; line-height: 1.8; }
+.game-app .overlay-card .primary { margin-top: 12px; }
+/* Melee-style pause: no blur, no dimming — the frozen scene stays fully
+   visible behind a corner-bracket frame, a PAUSE flag and control hints. The
+   layer is click-through so free-camera drags reach the canvas; only the
+   Resume button captures pointer events (via the .arena-chrome button rule). */
+.game-app .pause-overlay { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.game-app .pause-corner { position: absolute; width: 44px; height: 44px; border: 0 solid #eef4ffcc; filter: drop-shadow(0 2px 4px #0009); }
+.game-app .pause-corner.tl { top: 22px; left: 22px; border-top-width: 3px; border-left-width: 3px; }
+.game-app .pause-corner.tr { top: 22px; right: 22px; border-top-width: 3px; border-right-width: 3px; }
+.game-app .pause-corner.bl { bottom: 22px; left: 22px; border-bottom-width: 3px; border-left-width: 3px; }
+.game-app .pause-corner.br { bottom: 22px; right: 22px; border-bottom-width: 3px; border-right-width: 3px; }
+.game-app .pause-flag { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 16px; border: 1px solid #ffffff30; border-radius: 2px; background: #060c1caa; color: #f4f7ff; font: 700 15px var(--mono); letter-spacing: 4px; text-shadow: 0 2px 6px #000c; }
+.game-app .pause-flag .pause-mark { color: var(--game-gold); letter-spacing: 0; }
+.game-app .pause-flag em { color: var(--game-gold); font-style: normal; letter-spacing: 2px; }
+.game-app .pause-toolbar { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: stretch; gap: 10px; max-width: calc(100% - 40px); padding: 12px 14px; border: 1px solid #aec2ff26; border-radius: 3px; background: #0a1123c2; box-shadow: 0 10px 40px #0007; }
+.game-app .pause-footer { display: flex; align-items: center; gap: 14px; }
+.game-app .pause-hints { margin: 0; color: #b7c6e2; font: 9px var(--mono); letter-spacing: .6px; line-height: 1.5; }
+.game-app .pause-hints strong { color: #fff; font-weight: 700; }
+.game-app .pause-toolbar .pause-resume { flex: none; margin: 0; margin-left: auto; pointer-events: auto; }
+/* Pause menu: the in-match actions live here during local play, leaving the
+   live arena to a single pause button. Icon buttons become labeled rows so
+   each toggle reads at a glance. */
+.game-app.scene-arena .pause-overlay .play-toolbar.match-actions { position: static; z-index: auto; top: auto; right: auto; display: grid; grid-template-columns: repeat(2, minmax(180px, 220px)); gap: 6px; width: auto; max-width: none; margin: 0; padding: 0; border: 0; background: transparent; backdrop-filter: none; }
+.game-app.scene-arena .pause-overlay .match-actions .icon-action { width: auto; height: auto; min-width: 0; min-height: 40px; padding: 8px 12px; font-size: 13px; justify-content: flex-start; gap: 10px; }
+.game-app .pause-overlay .match-actions .action-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: .4px; }
+/* Collapsed live-play bar: one pause button, docked where the bar used to be. */
+.game-app.scene-arena .play-toolbar.match-actions-collapsed { right: 20px; display: flex; }
+@media (max-width: 640px) {
+  .game-app .pause-corner { width: 30px; height: 30px; }
+  .game-app .pause-flag { font-size: 12px; letter-spacing: 2px; top: 14px; }
+  .game-app .pause-toolbar { gap: 8px; padding: 10px 14px; bottom: 16px; max-height: calc(100% - 90px); overflow-y: auto; }
+  .game-app.scene-arena .pause-overlay .play-toolbar.match-actions { grid-template-columns: minmax(200px, 1fr); }
+  .game-app .pause-footer { flex-direction: column; gap: 8px; }
+  .game-app .pause-toolbar .pause-resume { margin-left: 0; }
+  .game-app .pause-hints { font-size: 8px; text-align: center; }
+}
+.game-app .countdown { z-index: 20; top: 32%; font: italic 1000 clamp(95px, 18vw, 210px)/1 Arial, sans-serif; color: var(--game-gold); text-shadow: 5px 7px 0 var(--game-red), 0 12px 40px #000a; }
+.game-app .match-banner { z-index: 20; top: 23%; font: italic 950 clamp(24px, 5vw, 64px) Arial, sans-serif; color: #fff; text-transform: uppercase; text-shadow: 3px 4px 0 #ff3d5288, 0 6px 20px #000; }
+.game-app.scene-arena .play-toolbar { position: fixed; z-index: 25; top: max(14px, env(safe-area-inset-top)); right: 20px; width: auto; max-width: 34%; margin: 0; padding: 0; border: 0; justify-content: flex-end; gap: 6px; pointer-events: auto; }
+.game-app.scene-arena .play-toolbar .setup-fields { display: none; }
+.game-app.scene-arena .play-toolbar .match-actions { justify-content: flex-end; gap: 5px; }
+.game-app.scene-arena .play-toolbar button { background: #0a1123bf; border-color: #aec2ff26; font-size: 9px; padding: 7px 10px; min-height: 32px; backdrop-filter: blur(8px); }
+.game-app.scene-arena .load-progress { position: fixed; bottom: 3px; left: 10px; max-width: 30%; font-size: 6px; color: #b1c1dd55; pointer-events: none; }
+.game-app.scene-arena .audio-warning { position: fixed; z-index: 30; top: 95px; right: 20px; max-width: 280px; padding: 7px; background: #080d1be6; }
+
+/* Central relay rooms borrow the versus character-select language. */
+.game-app .online-scene { max-width: 1250px; }
+.game-app .connection-state { align-self: center; padding: 7px 10px; border: 1px solid #ffe46644; border-radius: 0; background: #ffe46608; color: var(--game-gold); font: 8px var(--mono); letter-spacing: 1px; }
+.game-app .room-entry { display: flex; align-items: end; flex-wrap: wrap; gap: 20px; margin: 32px 0 35px; padding: 30px; border: 1px solid #a6baff20; border-left: 3px solid var(--game-red); background: linear-gradient(120deg, #182035aa, #10192aaa); }
+.game-app .room-entry label { flex: 1 1 150px; }
+.game-app .room-entry input { width: 100%; min-height: 46px; font-size: 15px; }
+.game-app #room-code { text-transform: uppercase; letter-spacing: 4px; font-family: var(--mono); }
+.game-app .or-divider { align-self: center; color: #5c7295; font: italic 900 20px Arial, sans-serif; }
+.game-app #active-room-code { color: var(--game-gold); font: italic 950 clamp(26px, 4vw, 44px) Arial, sans-serif; letter-spacing: 6px; }
+.game-app .room-players { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 24px; }
+.game-app .room-player { --slot-color: #ff5367; position: relative; display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 180px; padding: 20px 18px; border: 1px dashed #7688a52b; background: #0c1526; color: #627795; }
+.game-app .room-player:nth-child(2) { --slot-color: #72a7ff; }.game-app .room-player:nth-child(3) { --slot-color: #ffdc67; }.game-app .room-player:nth-child(4) { --slot-color: #74e6c6; }
+.game-app .room-player.occupied { color: #e6ebf7; border-style: solid; border-color: #ffffff17; border-bottom: 3px solid var(--slot-color); background: linear-gradient(145deg, #1b2439, #101728); }
+.game-app .player-number { color: var(--slot-color); font: italic 950 32px Arial, sans-serif; }
+.game-app .room-player strong { font: italic 850 19px Arial, sans-serif; overflow-wrap: anywhere; }
+.game-app .room-player > span:not(.player-number) { color: #a7b4cf; font-size: 11px; }
+.game-app .room-player small { margin-top: auto; color: var(--slot-color); font: 7px/1.7 var(--mono); letter-spacing: .5px; }
+.game-app .room-rules { display: flex; align-items: end; flex-wrap: wrap; gap: 14px; }
+.game-app .room-rules label { flex: 1 1 120px; }.game-app .room-rules select { min-height: 42px; }
+.game-app .room-help, .game-app .lan-warning { color: #7185a4; font-size: 9px; line-height: 1.8; margin: 14px 0; }
+.game-app .lan-warning { padding-top: 12px; border-top: 1px solid #a8bbff15; }
+.game-app .room-error { color: #ffb077; font: 10px/1.8 var(--mono); overflow-wrap: anywhere; }
+.game-app .room-error:empty { display: none; }
+.game-app .network-status { color: #9aadc9; font: 9px/1.8 var(--mono); }
+.game-app .voice-panel { margin: 14px 0; padding: 12px; border: 1px solid #a6baff20; background: linear-gradient(120deg, #18203588, #10192a88); }
+.game-app .voice-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.game-app .voice-heading strong { color: #ccd6e9; font: 850 11px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .voice-heading span { color: #879dbf; font: 8px var(--mono); }
+.game-app .voice-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.game-app .voice-controls .check { display: flex; align-items: center; gap: 6px; color: #9aadc9; font: 9px var(--mono); }
+.game-app .voice-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding: 0; }
+.game-app .voice-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 10px; border: 1px solid #a6baff15; background: #0c1526; color: #9aadc9; font: 9px var(--mono); }
+.game-app .voice-list li.is-speaking { border-color: #74e6c688; color: #e6ebf7; }
+.game-app .voice-peer-name { color: #dce5f5; }
+.game-app .voice-peer-state { margin-right: auto; }
+.game-app .voice-volume { display: flex; align-items: center; gap: 6px; }
+.game-app .voice-volume input { width: 90px; accent-color: #74e6c6; }
+.game-app .voice-panel.voice-compact { margin: 6px 0; padding: 8px; font-size: 8px; }
+.game-app .voice-panel.voice-compact .voice-list li { padding: 6px 8px; }
+.game-app .network-telemetry { position: relative; z-index: 15; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: 100%; max-width: 1250px; margin: 14px auto; padding: 8px 0; border: 0; border-top: 1px solid #a6baff17; background: transparent; color: #879dbf; font: 8px var(--mono); }
+.game-app .network-telemetry strong { color: #ccd6e9; }
+.game-app .network-telemetry .secondary { margin-left: auto; min-height: 28px; padding: 6px 10px; font-size: 8px; }
+.game-app.scene-arena .network-telemetry { position: fixed; z-index: 25; left: 22px; top: 77px; width: auto; max-width: 38%; border: 0; margin: 0; padding: 0; font-size: 7px; gap: 6px; pointer-events: auto; }
+.game-app.scene-arena .network-telemetry > span { opacity: .7; }
+.game-app .network-notice { position: fixed; z-index: 40; left: 50%; top: 18%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: min(420px, 86vw); padding: 16px 22px; border: 1px solid #ffd76a66; border-radius: 10px; background: #0b1020e6; color: #dfe7f7; font: 11px var(--mono); text-align: center; box-shadow: 0 12px 40px #000a; pointer-events: auto; }
+.game-app .network-notice strong { color: #ffd76a; font-size: 14px; letter-spacing: .12em; }
+.game-app .network-notice-bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
+.game-app .network-notice-bar i { display: block; height: 100%; background: #ffd76a; transition: width .2s linear; }
+.game-app .network-notice .secondary { min-height: 28px; padding: 6px 12px; font-size: 9px; }
+.game-app.scene-arena .network-telemetry > span:last-of-type { display: none; }
+
+/* Touch layer: floating analog stick on the left, action cluster on the right.
+   Landscape overlays the arena; portrait reserves a dedicated panel below it. */
+.game-app .touch-layer { display: none; }
+.game-app.scene-arena.show-touch .touch-layer { display: block; position: fixed; inset: 0; z-index: 22; pointer-events: none; }
+.game-app .touch-stick { position: absolute; left: 0; top: 96px; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.game-app .stick-rest { position: absolute; left: 110px; bottom: calc(var(--touch-bottom) + 70px); width: 112px; height: 112px; margin: 0 0 -56px -56px; border-radius: 50%; border: 2px dashed #bacdff45; background: #0b153648; transition: opacity .2s; }
+.game-app .stick-rest::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: #ebf0ff55; }
+.game-app .touch-stick.active .stick-rest { opacity: 0; }
+.game-app .stick-base { position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; border: 2px solid #bacdff66; background: radial-gradient(circle, #0b1536a8 58%, #bacdff33 59%, #0b153680 63%); opacity: 0; transition: opacity .1s; }
+.game-app .touch-stick.active .stick-base { opacity: 1; }
+.game-app .stick-base { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+.game-app .stick-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: #ebf0ff; box-shadow: 0 3px 12px #0009; transition: background .08s; }
+.game-app .touch-stick[data-tier="run"] .stick-knob { background: var(--game-gold); }
+.game-app .touch-stick[data-tier="run"] .stick-base { border-color: #ffe466aa; }
+.game-app .touch-actions { position: absolute; right: var(--touch-edge); bottom: var(--touch-bottom); display: grid; grid-template-columns: repeat(3, var(--touch-size)); grid-template-rows: repeat(3, var(--touch-size)); gap: var(--touch-gap); pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.game-app .touch-actions button { width: var(--touch-size); height: var(--touch-size); min-width: 44px; min-height: 44px; padding: 0; border: 2px solid #bacdff55; border-radius: 50%; background: #0b1536b8; color: #ebf0ff; font: 800 10px Arial, sans-serif; letter-spacing: .6px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .05s, background .05s; }
+.game-app .touch-actions button:active { transform: scale(.92); background: #2b3c78d8; }
+.game-app .touch-special { grid-area: 1 / 2; color: #d6c3ff; border-color: #b897ee99; font-size: 20px; }
+.game-app .touch-jump { grid-area: 1 / 3; }
+.game-app .touch-quick { grid-area: 2 / 1; color: var(--game-gold); border-color: #ffe46688; font-size: 22px; }
+.game-app .touch-hop { grid-area: 2 / 2; color: #9fe7ff; border-color: #7fd8ff88; }
+.game-app .touch-strong { grid-area: 2 / 3; color: #ff899a; border-color: #ff536799; }
+.game-app .touch-shield { grid-area: 3 / 2; }
+.game-app .touch-grab { grid-area: 3 / 3; }
+@media (orientation: portrait) {
+  /* The arena is what the player needs to see: keep the panel to the pad plus a
+     little air (48px buttons still clear the 44px tap-target floor). */
+  .game-app.scene-arena.show-touch { --touch-panel: max(212px, 26dvh); --touch-size: 48px; --touch-gap: 7px; }
+  .game-app.scene-arena.show-touch .canvas-host, .game-app.scene-arena.show-touch .arena-vignette { bottom: var(--touch-panel); }
+  .game-app.scene-arena.show-touch .fighters-hud { bottom: calc(var(--touch-panel) + 8px); }
+  .game-app.scene-arena.show-touch .touch-layer::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--touch-panel); background: linear-gradient(#0b1128, #05091a); border-top: 1px solid #bacdff22; }
+  .game-app.scene-arena.show-touch .touch-stick { top: auto; bottom: 0; width: 50%; height: var(--touch-panel); }
+  .game-app.scene-arena.show-touch .stick-rest { left: 50%; bottom: 50%; width: 92px; height: 92px; margin: 0 0 -46px -46px; }
+  .game-app.scene-arena.show-touch .stick-rest::after { width: 36px; height: 36px; margin: -18px 0 0 -18px; }
+  .game-app.scene-arena.show-touch .stick-base { width: 112px; height: 112px; margin: -56px 0 0 -56px; }
+  .game-app.scene-arena.show-touch .stick-knob { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+  .game-app.scene-arena.show-touch .touch-actions { right: 14px; bottom: calc((var(--touch-panel) - 3 * var(--touch-size) - 2 * var(--touch-gap)) / 2 + env(safe-area-inset-bottom) / 2); }
+}
+
+/* App integration: fullscreen and modal controls remain above match overlays. */
+.game-app .menu-layer .play-header { padding: 0; padding-right: 90px; background: transparent; }
+.game-app .menu-footer { display: flex; align-items: center; gap: 24px; max-width: 1500px; margin: 22px auto 0; padding: 17px 0 13px; border-top: 1px solid #b2c5ff1b; }
+.game-app .menu-footer .play-toolbar { flex: 1; width: auto; margin: 0; padding: 0; border: 0; justify-content: flex-start; gap: 20px; }
+.game-app .quick-start { align-self: stretch; min-width: 210px; background: linear-gradient(110deg, #ff4354, #ff774e); color: #fff; font-style: italic; font-size: 17px; letter-spacing: -.3px; }
+.game-app .menu-layer > .audio-settings { max-width: 1500px; margin: 6px auto 12px; gap: 18px; }
+.game-app .audio-settings .check { padding: 0; color: #8799b6; font-size: 9px; white-space: nowrap; }
+.game-app .audio-settings input[type="checkbox"] { width: 12px; height: 12px; margin: 0; accent-color: var(--game-gold); }
+.game-app .game-statusbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; max-width: 1500px; margin: 12px auto 0; border-top: 1px solid #a6baff14; padding-top: 8px; }
+.game-app .game-statusbar .load-progress { flex: 1; margin: 0; }
+.game-app .text-action { flex-shrink: 0; padding: 6px 0; border: 0; color: #98abc8; background: transparent; font-size: 9px; }
+.game-app .text-action:hover { color: var(--game-gold); }
+.game-app .screen-tools { position: absolute; z-index: 60; top: max(12px, env(safe-area-inset-top)); right: clamp(16px, 3.5vw, 64px); }
+.game-app .icon-action { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 34px; padding: 0; border: 1px solid #c5d3ee33; border-radius: 3px; background: #0b1326b3; color: #b9c9e4; font-size: 18px; line-height: 1; backdrop-filter: blur(8px); }
+.game-app .icon-action:hover:not(:disabled), .game-app .icon-action[aria-pressed="true"] { color: var(--game-gold); border-color: #ffe46677; background: #28261da6; }
+.game-app .action-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.game-app.scene-arena .screen-tools { right: 20px; top: max(14px, env(safe-area-inset-top)); }
+.game-app.scene-arena .play-toolbar.match-actions { z-index: 45; right: 68px; top: max(14px, env(safe-area-inset-top)); width: auto; max-width: none; display: flex; gap: 5px; }
+.game-app.scene-arena .match-actions .icon-action { width: 34px; height: 34px; min-height: 0; padding: 0; font-size: 17px; }
+.game-app .arena-vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at 50% 40%, transparent 40%, #02051066 100%); }
+.game-app .in-game-brand { display: block; margin-bottom: 6px; color: #fff; font: italic 950 17px Arial, sans-serif; letter-spacing: -.8px; }
+.game-app .in-game-brand > span { color: var(--game-red); }
+.game-app .match-identity .game-status { display: inline-block; margin-top: 7px; color: #bac9e3; font-size: 6px; background: #09102166; padding: 3px 5px; }
+.game-app .hud-fighter-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.game-app .hud-slot { position: absolute; top: -12px; left: 7px; padding: 3px 8px; color: #071022; background: var(--player-color); font: italic 950 10px Arial, sans-serif; transform: skewX(-10deg); }
+.game-app .fighter-card[data-damage="high"] .percent { color: #ffc35f; }
+.game-app .fighter-card[data-damage="danger"] .percent { color: #ff5b66; text-shadow: 2px 3px 0 #270713, 0 0 15px #ff2d4344; }
+.game-app .game-warning { position: absolute; z-index: 70; right: 20px; bottom: 145px; max-width: min(360px, calc(100% - 40px)); margin: 0; padding: 10px 13px; border: 1px solid #ffa25555; background: #181320ee; color: #ffc587; font: 9px/1.7 var(--mono); overflow-wrap: anywhere; }
+.game-app .options-dialog { width: min(680px, calc(100% - 32px)); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); margin: auto; padding: clamp(20px, 3.5vw, 34px) clamp(18px, 4vw, 38px) 26px; overflow-y: auto; overscroll-behavior: contain; border: 2px solid #4a6bff55; border-radius: 22px; background: radial-gradient(120% 60% at 85% -10%, #3b6bff2e, transparent 55%), radial-gradient(100% 55% at 8% 110%, #ffcf4022, transparent 55%), repeating-linear-gradient(0deg, transparent 0 23px, #8fb4ff10 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #8fb4ff10 23px 24px), linear-gradient(160deg, #101b31f2, #070c18f5); color: #e4ebf8; box-shadow: 0 0 0 1px #060a14, 0 0 46px #2a4bff26, 0 24px 70px #000a; scrollbar-width: thin; scrollbar-color: #526281 #11192b; }
+.game-app .options-dialog:not([open]) { display: none; }
+.game-app .options-dialog::backdrop { background: #030714bb; backdrop-filter: blur(10px); }
+.game-app .options-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 8px; }
+.game-app .options-brand { display: inline-block; color: #eef2f8; font: italic 1000 clamp(30px, 5vw, 46px)/1 Impact, "Arial Narrow", Arial, sans-serif; letter-spacing: -2px; transform: skewX(-6deg); text-shadow: 3px 3px 0 #c81e3a, 6px 6px 0 #0009; }
+.game-app .options-brand > span { color: #ffcf40; }
+.game-app .options-heading h2 { margin: 8px 0 0; padding: 0 0 10px; border-bottom: 3px solid #ffcf40; color: #cfd8e6; font: italic 900 clamp(19px, 2.6vw, 27px)/1 Arial, sans-serif; letter-spacing: 5px; text-shadow: 2px 2px 0 #000; }
+.game-app .options-heading > button { min-width: 36px; width: 36px; min-height: 36px; padding: 0; flex-shrink: 0; }
+.game-app .options-section { margin-top: 18px; padding: 16px 18px; border: 1px solid #a6baff20; border-radius: 12px; background: linear-gradient(120deg, #182035aa, #10192aaa); }
+.game-app .options-section > h3 { margin: 0 0 12px; color: #ffcf40; font: italic 900 15px Arial, sans-serif; letter-spacing: 3px; text-shadow: 2px 2px 0 #000; }
+.game-app .options-section .audio-settings { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin: 0; }
+.game-app .options-section .check { display: flex; align-items: center; gap: 9px; color: #c0cde2; font-size: 12px; padding: 6px 0; }
+.game-app .options-dialog input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: #ffcf40; }
+.game-app .options-dialog .music-volume { display: flex; align-items: center; gap: 10px; color: #9fb0c9; font: 10px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .options-dialog .music-volume input { width: 140px; height: 16px; accent-color: #ffcf40; }
+.game-app .options-dialog .music-volume output { min-width: 3.2em; color: #e8edf5; font: 10px var(--mono); }
+.game-app .options-section .controller-panel { border: 0; background: none; padding: 0; margin: 0; }
+.game-app .presentation-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #9fb0c9; font: 10px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .presentation-setting select { flex: 1; max-width: 280px; padding: 10px 11px; border: 1px solid #ffcf4044; border-radius: 8px; background: #0a1222; color: #e8edf5; font-size: 12px; }
+.game-app .effects-settings { margin-top: 12px; border: 1px solid #a6baff20; border-radius: 12px; padding: 10px 14px; background: #0b132680; }
+.game-app .effects-settings > summary { cursor: pointer; color: #9fb0c9; font: 10px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .effects-settings[open] > summary { color: var(--game-gold); }
+.game-app .effects-note { margin: 8px 0 0; color: #8799b6; font-size: 10px; line-height: 1.6; }
+.game-app .effect-setting > span { display: flex; flex-direction: column; gap: 3px; }
+.game-app .effect-setting small { color: #7f90ad; font-size: 9px; letter-spacing: 0; text-transform: none; }
+.game-app .options-advanced { margin-top: 14px; border: 1px solid #a6baff20; border-radius: 12px; padding: 12px 16px; background: #0b1326b3; color: #bac9e3; font-size: 11px; }
+.game-app .options-advanced > summary { cursor: pointer; color: #ffcf40; font: italic 800 13px Arial, sans-serif; letter-spacing: 2px; }
+.game-app .options-advanced .debug-settings { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 10px; }
+.game-app .credits-block { margin: 10px 0; padding: 6px 0; color: #8799b6; font-size: 10px; line-height: 1.8; }
+.game-app .credits-block summary { cursor: pointer; color: #95a7c2; font-size: 9px; }
+.game-app .credits-block a { color: var(--game-gold); }
+.game-app .credits-block code { font: 9px var(--mono); }
+.game-app .credits-block .credits-fine { opacity: .8; }
+.game-app .fall-log { margin: 10px 0; padding: 10px 12px; border: 1px solid #8fa6cd33; border-radius: 3px; background: #0b1326b3; color: #bac9e3; font-size: 10px; }
+.game-app .fall-log summary { cursor: pointer; color: var(--game-gold); }
+.game-app .fall-log ol { margin: 8px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.game-app .fall-log code { font: 9px/1.5 var(--mono); overflow-wrap: anywhere; }
+.game-app .fall-log .play-toolbar { display: flex; gap: 8px; margin-top: 8px; }
+.game-app .options-note { margin: 14px 2px 0; text-align: center; color: #7489a6; font: 9px/1.8 var(--mono); }
+.game-app .options-note.privacy-note { margin-top: 6px; text-align: left; }
+.game-app .options-dialog > .primary { width: 100%; margin-top: 18px; }
+
+/* Narrow menus scroll internally; arena and HUD remain fixed to the viewport. */
+@media (max-width: 1100px) {
+  .game-app .scene-stamp { display: none; }
+  .game-app .fighter-caption strong { font-size: 43px; }
+  .game-app .tile-top { font-size: 7px; letter-spacing: .6px; }
+  .game-app .ready-to-fight { font-size: 20px; }
+  .game-app .play-toolbar { gap: 12px; }
+  .game-app .fighters-hud.count-4 { width: calc(100% - 32px); gap: 7px; }
+  .game-app .fighter-card { padding: 10px 12px 8px; min-height: 90px; }
+  .game-app .fighter-card:has(.hud-portrait) { padding-left: 57px; }
+  .game-app .hud-portrait { width: 70px; height: 106px; }
+  .game-app .fighters-hud.count-4 .percent { font-size: 37px; }
+  .game-app .fighters-hud.count-4 .fighter-card strong { font-size: 17px; }
+  .game-app .match-top { left: 20px; right: 20px; }
+  .game-app .match-top .game-status { display: none; }
+  .game-app.scene-arena .play-toolbar { max-width: 38%; right: 15px; }
+}
+@media (max-width: 760px) {
+  .game-app .play-header { flex-basis: 48px; height: 48px; padding: 0 20px; }
+  .game-app .brand { font-size: 21px; }.game-app .prototype-badge { display: none; }
+  .game-app .play-header nav { font-size: 9px; gap: 14px; }
+  .game-app .menu-layer { padding: 0 18px 24px; }
+  .game-app .scene-navigation { margin-bottom: 22px; gap: 0; padding-top: 6px; }
+  .game-app .scene-navigation button { padding: 13px 11px; gap: 5px; font-size: 9px; letter-spacing: .7px; }
+  .game-app .scene-navigation button span { font-size: 7px; }
+  .game-app .scene-heading { margin-bottom: 20px; }.game-app .scene-heading h2 { font-size: clamp(36px, 7.5vw, 58px); }
+  .game-app .menu-layer .play-header { padding-right: 46px; }
+  .game-app .screen-tools { top: 8px; right: 18px; }.game-app .screen-tools .icon-action { width: 31px; height: 31px; }
+  .game-app .menu-footer { flex-wrap: wrap; gap: 14px; }.game-app .menu-footer .setup-fields { width: 100%; flex-basis: 100%; gap: 8px; }
+  .game-app .quick-start { min-width: 0; min-height: 43px; flex: 1; font-size: 15px; }.game-app .game-statusbar { align-items: start; }
+  .game-app .in-game-brand { font-size: 13px; }
+  .game-app.scene-arena .play-toolbar.match-actions { right: 57px; gap: 4px; }.game-app.scene-arena .match-actions .icon-action { width: 29px; height: 31px; font-size: 15px; }
+  .game-app.scene-arena .screen-tools { right: 14px; }
+  .game-app .options-dialog { padding: 20px 18px; border-radius: 16px; }
+  .game-app .scene-description { font-size: 10px; }
+  .game-app .character-grid { gap: 7px; padding: 0; }
+  .game-app .character-tile { height: clamp(285px, 46dvh, 420px); padding: 15px 10% 0; }
+  .game-app .tile-top > span:last-child { display: none; }.game-app .tile-slot { min-width: 26px; height: 24px; font-size: 13px; }
+  .game-app .fighter-art { bottom: 42px; }.game-app .fighter-portrait { width: 130%; left: -14%; height: 110%; }
+  .game-app .fighter-caption strong { font-size: clamp(24px, 5.4vw, 40px); }
+  .game-app .fighter-style { font-size: 8px; line-height: 1.65; }
+  .game-app .fighter-caption small { font-size: 6px; line-height: 1.5; }
+  .game-app .tile-selection { font-size: 6px; letter-spacing: .4px; padding: 7px 5px; min-height: 38px; }
+  .game-app .tile-selection > span { display: none; }
+  .game-app .scene-actions { margin-top: 20px; gap: 12px; }.game-app .ready-to-fight { display: none; }
+  .game-app .selection-readout { column-gap: 7px; }.game-app .selection-readout strong { font-size: 18px; }
+  .game-app .selection-readout-label { font-size: 7px; }.game-app .selection-readout-hint { max-width: 200px; font-size: 8px; }
+  .game-app .primary { min-height: 44px; padding: 12px 19px; font-size: 11px; }
+  .game-app .stage-grid { gap: 14px; }.game-app .stage-art { height: 200px; }
+  .game-app .stage-title { align-items: start; flex-direction: column; gap: 8px; }.game-app .stage-title strong { font-size: 25px; }
+  .game-app .stage-caption { padding: 15px; }.game-app .stage-caption > small { font-size: 9px; }
+  .game-app .room-entry { margin: 22px 0; padding: 18px; gap: 12px; }.game-app .room-players { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-app .room-player { min-height: 150px; padding: 14px; }.game-app .room-rules { gap: 12px; }
+  .game-app .online-scene .scene-heading { flex-wrap: wrap; }
+  .game-app .network-telemetry { font-size: 7px; }
+  .game-app .setup-fields { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .game-app .setup-fields > label { font-size: 7px; letter-spacing: .4px; }.game-app .setup-fields select { width: 100%; min-width: 0; padding: 8px 5px; font-size: 10px; }
+  .game-app .play-toolbar { margin-top: 20px; padding-top: 15px; }
+  .game-app .audio-settings { gap: 12px; }.game-app .play-toolbar .check { font-size: 8px; }
+  .game-app .fighters-hud { width: calc(100% - 28px); bottom: max(18px, env(safe-area-inset-bottom)); gap: 8px; }
+  .game-app .fighters-hud.count-3, .game-app .fighters-hud.count-4 { width: calc(100% - 24px); gap: 6px; }
+  .game-app .fighter-card { min-height: 78px; padding: 10px 10px 7px; }.game-app .fighter-card:has(.hud-portrait) { padding-left: 54px; }
+  .game-app .hud-portrait { width: 64px; height: 100px; }.game-app .fighter-card strong { font-size: 21px; }
+  .game-app .percent { font-size: 44px; }.game-app .fighter-card .player-label { font-size: 7px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { display: block; padding: 9px 9px 6px; min-height: 89px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .hud-portrait { opacity: .38; right: 0; left: auto; width: 72px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .percent { font-size: 34px; position: absolute; right: 8px; bottom: 14px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card strong { font-size: 16px; margin-bottom: 25px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .shield-meter { width: 36px; }.game-app .fighters-hud:is(.count-3, .count-4) .stock-dots { font-size: 8px; letter-spacing: 1px; }
+  .game-app .match-top { top: max(15px, env(safe-area-inset-top)); left: 15px; right: 15px; }
+  .game-app .match-top h1 { font-size: 13px; }.game-app .match-top .eyebrow { font-size: 6px; max-width: 140px; line-height: 1.7; }
+  .game-app .clock { font-size: 28px; padding: 7px 19px; }
+  .game-app.scene-arena .play-toolbar { top: 10px; right: 10px; max-width: 34%; gap: 5px; }
+  .game-app.scene-arena .play-toolbar button { font-size: 8px; min-height: 29px; padding: 6px 8px; }
+  .game-app.scene-arena .network-telemetry { top: 65px; left: 15px; max-width: 50%; font-size: 6px; }
+  .game-app.scene-arena .network-telemetry > span { display: none; }
+  .game-app .overlay-card { padding: 28px; }
+  .game-app { --touch-size: 44px; --touch-gap: 5px; --touch-edge: 12px; }
+}
+@media (max-width: 480px) {
+  .game-app .menu-layer { padding-inline: 14px; }.game-app .play-header { padding-inline: 16px; }
+  .game-app .scene-navigation button { font-size: 8px; padding-inline: 8px; letter-spacing: .3px; }.game-app .scene-navigation button span { display: none; }
+  .game-app .scene-navigation button::after { left: 4px; right: 4px; }
+  .game-app .scene-heading { margin-bottom: 12px; }.game-app .scene-heading h2 { font-size: 29px; line-height: .96; }.game-app .scene-heading h2 > span { display: block; }
+  .game-app .play-header nav { font-size: 7px; gap: 10px; }.game-app .brand { font-size: 19px; }
+  .game-app .game-statusbar { gap: 10px; }.game-app .text-action { font-size: 8px; }
+  .game-app .menu-layer > .audio-settings { gap: 13px; }.game-app .audio-settings .check { font-size: 8px; }
+  .game-app.scene-arena .play-toolbar.match-actions { display: grid; grid-template-columns: repeat(3, 28px); gap: 4px; right: 53px; }
+  .game-app.scene-arena .match-actions .icon-action { width: 28px; height: 28px; font-size: 14px; }
+  .game-app .match-identity .game-status { font-size: 5px; }.game-app .in-game-brand { font-size: 12px; }
+  .game-app .options-dialog { padding: 18px 14px; } .game-app .options-section { padding: 14px; } .game-app .presentation-setting { flex-direction: column; align-items: stretch; } .game-app .presentation-setting select { max-width: none; }
+  .game-app .game-warning { right: 10px; max-width: calc(100% - 20px); font-size: 8px; }
+  .game-app .scene-kicker { font-size: 7px; letter-spacing: 1.5px; }.game-app .scene-description { font-size: 9px; }
+  /* Phones: compact 3-column roster (art + name only) so the full 55-fighter
+     grid fits ~2 viewports instead of 55 tall rows; the START bar sticks to
+     the bottom so actions never require scrolling to the end. */
+  .game-app .selection-scene { padding-bottom: 8px; }
+  .game-app .character-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .game-app .character-tile { height: 172px; padding: 10px 8% 0; }
+  .game-app .character-tile:hover:not(:disabled) { transform: none; }
+  .game-app .fighter-art { inset: 8px 0 30px; left: 0; bottom: 30px; }.game-app .fighter-portrait { width: 118%; left: -9%; height: 112%; }
+  .game-app .fighter-caption { padding-top: 8px; }.game-app .fighter-caption::before { inset-inline: -10%; }
+  .game-app .fighter-caption strong { font-size: 15px; letter-spacing: -.02em; }.game-app .character-tile.water .fighter-caption strong { font-size: 15px; }
+  .game-app .fighter-style { display: none; }.game-app .fighter-caption small { display: none; }
+  .game-app .tile-selection { font-size: 7px; line-height: 1.4; min-height: 26px; padding: 6px 8px; }
+  .game-app .tile-top { font-size: 6px; }.game-app .tile-top > span:last-child { display: none; }
+  .game-app .tile-slot { min-width: 22px; height: 20px; font-size: 11px; }
+  .game-app .fighter-number { font-size: 84px; }
+  .game-app .fighter-mark { font-size: 54px; }
+  .game-app .scene-actions {
+    position: sticky; bottom: 0; z-index: 5; margin-top: 12px; padding: 10px 0 calc(4px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, #080d1bee 35%);
+  }
+  .game-app .character-actions { align-items: end; }.game-app .selection-readout { display: flex; flex-direction: column; align-items: start; gap: 5px; }.game-app .selection-readout-hint { max-width: 135px; }
+  .game-app .stage-grid { grid-template-columns: 1fr; gap: 16px; }.game-app .stage-art { height: 200px; }
+  .game-app .stage-title { flex-direction: row; align-items: center; }.game-app .stage-title strong { font-size: 26px; }
+  .game-app .stage-selected { font-size: 7px; }.game-app .stage-caption { padding: 16px; }.game-app .stage-caption > small { font-size: 9px; }
+  .game-app .stage-coordinate { font-size: 8px; }.game-app .stage-platform-count { font-size: 7px; }
+  .game-app .setup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }.game-app .setup-fields select { font-size: 11px; }
+  .game-app .room-entry label { flex-basis: 100%; }.game-app .room-entry .or-divider { flex-basis: 100%; text-align: center; font-size: 14px; }.game-app .room-entry button { width: 100%; }
+  .game-app .room-player strong { font-size: 16px; }.game-app .room-player small { font-size: 6px; }.game-app .room-rules label { flex-basis: 40%; }
+  .game-app .fighters-hud { width: calc(100% - 20px); gap: 6px; }.game-app .fighter-card { padding: 9px 7px; min-height: 81px; }.game-app .fighter-card:has(.hud-portrait) { padding-left: 45px; }
+  .game-app .hud-portrait { width: 56px; height: 91px; }.game-app .fighter-card strong { font-size: 17px; }.game-app .percent { font-size: 35px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) { gap: 4px; width: calc(100% - 14px); }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { padding: 6px 5px; min-height: 93px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card strong { font-size: 13px; letter-spacing: -.5px; margin-top: 5px; margin-bottom: 33px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .percent { right: 5px; bottom: 24px; font-size: 28px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .player-label { font-size: 5px; letter-spacing: .6px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .hud-portrait { width: 60px; opacity: .25; }.game-app .fighters-hud:is(.count-3, .count-4) .stock-dots { font-size: 7px; }
+  .game-app .clock { font-size: 26px; padding: 6px 14px; }.game-app .match-top h1 { font-size: 10px; }.game-app .match-top .eyebrow { font-size: 5px; letter-spacing: .3px; }
+  .game-app.scene-arena .play-toolbar { max-width: 32%; }.game-app.scene-arena .play-toolbar button { font-size: 7px; padding: 5px; min-height: 27px; }
+  .game-app .hud-center { gap: 5px; font-size: 5px; }.game-app .hud-center small { font-size: 5px; }
+}
+@media (max-height: 540px) and (min-width: 600px) {
+  .game-app .fighters-hud { bottom: 12px; width: min(780px, calc(100% - 32px)); }
+  .game-app .fighter-card { min-height: 65px; padding-block: 7px; }.game-app .fighter-card:has(.hud-portrait) { padding-left: 57px; }
+  .game-app .hud-portrait { width: 67px; height: 88px; }.game-app .fighter-card strong { font-size: 17px; }.game-app .percent { font-size: 37px; }
+  .game-app .clock { font-size: 25px; padding: 5px 18px; }.game-app .match-top { top: 12px; }.game-app .match-top h1 { font-size: 12px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { min-height: 68px; }.game-app .fighters-hud:is(.count-3, .count-4) .fighter-card strong { margin-bottom: 16px; }.game-app .fighters-hud:is(.count-3, .count-4) .percent { bottom: 10px; font-size: 29px; }
+  .game-app { --touch-size: 44px; --touch-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .game-app.scene-arena .network-telemetry { top: 54px; }
+  .game-app .overlay-card { padding: 22px 30px; }.game-app .overlay-card h2 { font-size: 35px; }.game-app .overlay-card p:not(.eyebrow) { font-size: 10px; }
+}
+/* Expanded prototype roster: five through eight slots share one row like the
+   original single-row HUD. Keep the established two/four-player layouts and
+   their touch geometry intact. */
+.game-app .fighters-hud.many-players { width: min(1600px, calc(100% - 40px)); grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); gap: 8px; overflow-x: auto; }
+.game-app .fighters-hud.many-players .fighter-card { min-height: 82px; height: 82px; min-width: 0; padding: 10px 10px 8px; gap: 6px; }
+.game-app .fighters-hud.many-players .fighter-card:has(.hud-portrait) { padding-left: 58px; }
+.game-app .fighters-hud.many-players .hud-portrait { width: 64px; height: 96px; }
+.game-app .fighters-hud.many-players .hud-fighter-info { min-width: 0; flex: 1 1 auto; }
+.game-app .fighters-hud.many-players .fighter-card strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.game-app .fighters-hud.many-players .percent { font-size: 30px; letter-spacing: -2px; white-space: nowrap; flex-shrink: 0; }
+.game-app .fighters-hud.many-players .player-label { font-size: 7px; letter-spacing: .8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .fighters-hud.many-players .stock-dots { font-size: 9px; letter-spacing: 1px; }
+.game-app .fighters-hud.many-players .hud-slot { top: -10px; font-size: 10px; padding: 2px 7px; }
+.game-app .fighters-hud:is(.count-7,.count-8) .fighter-card strong { font-size: 14px; }
+.game-app .fighters-hud:is(.count-7,.count-8) .percent { font-size: 26px; }
+.game-app .fighters-hud:is(.count-7,.count-8) .hud-portrait { width: 56px; }
+.game-app .fighters-hud:is(.count-7,.count-8) .fighter-card:has(.hud-portrait) { padding-left: 48px; }
+.game-app.scene-arena:has(.fighters-hud.many-players) { --touch-bottom: calc(130px + env(safe-area-inset-bottom)); }
+@media (max-width: 1100px) {
+  .game-app .fighters-hud.many-players { width: calc(100% - 28px); gap: 7px; }
+  .game-app .fighters-hud.many-players .fighter-card { padding-inline: 10px; }
+  .game-app .fighters-hud.many-players .fighter-card:has(.hud-portrait) { padding-left: 52px; }
+  .game-app .fighters-hud.many-players .hud-portrait { width: 62px; height: 90px; }
+  .game-app .fighters-hud.many-players .fighter-card strong { font-size: 15px; }
+  .game-app .fighters-hud.many-players .percent { font-size: 28px; }
+}
+@media (max-width: 760px) {
+  .game-app .fighters-hud.many-players { width: calc(100% - 18px); gap: 5px; }
+  .game-app .fighters-hud.many-players .fighter-card,
+  .game-app .fighters-hud.many-players .fighter-card:has(.hud-portrait) { display: block; height: 96px; min-height: 96px; padding: 0; }
+  .game-app .fighters-hud.many-players .hud-fighter-info { display: contents; }
+  .game-app .fighters-hud.many-players .player-label { position: absolute; top: 7px; left: 6px; right: 6px; font-size: 7px; letter-spacing: .3px; }
+  .game-app .fighters-hud.many-players .fighter-card strong { position: absolute; top: 20px; left: 6px; right: 4px; font-size: 13px; letter-spacing: -.5px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game-app .fighters-hud.many-players .percent { position: absolute; top: 36px; right: 6px; bottom: auto; font-size: 28px; line-height: 1; }
+  .game-app .fighters-hud.many-players .stock-dots { position: absolute; left: 6px; bottom: 10px; font-size: 8px; }
+  .game-app .fighters-hud.many-players .shield-meter { position: absolute; left: 6px; bottom: 4px; width: 42px; height: 5px; }
+  .game-app .fighters-hud.many-players .charge-meter { position: absolute; right: 6px; bottom: 4px; width: 30px; height: 5px; }
+  .game-app .fighters-hud.many-players .combat-state { position: absolute; left: 6px; right: 4px; bottom: 23px; font-size: 6px; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game-app .fighters-hud.many-players .hud-portrait { left: 0; right: auto; width: 68px; height: 86px; opacity: .25; }
+  .game-app .fighters-hud.many-players .hud-slot { left: 5px; }
+  .game-app.scene-arena:has(.fighters-hud.many-players) { --touch-bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 480px) {
+  .game-app .fighters-hud.many-players { width: calc(100% - 14px); gap: 4px; }
+  .game-app .fighters-hud.many-players .fighter-card strong { font-size: 12px; }
+  .game-app .fighters-hud.many-players .percent { font-size: 26px; }
+  .game-app .fighters-hud.many-players .player-label { font-size: 6px; }
+}
+@media (max-height: 540px) and (min-width: 600px) {
+  .game-app .fighters-hud.many-players { bottom: 12px; gap: 6px; }
+  .game-app .fighters-hud.many-players .fighter-card,
+  .game-app .fighters-hud.many-players .fighter-card:has(.hud-portrait) { height: 68px; min-height: 68px; }
+  .game-app .fighters-hud.many-players .hud-portrait { height: 70px; }
+  .game-app .fighters-hud.many-players .player-label { top: 5px; font-size: 6px; }
+  .game-app .fighters-hud.many-players .fighter-card strong { top: 15px; font-size: 14px; }
+  .game-app .fighters-hud.many-players .percent { top: 28px; right: 7px; font-size: 27px; }
+  .game-app .fighters-hud.many-players .stock-dots { bottom: 8px; font-size: 7px; }
+  .game-app .fighters-hud.many-players .shield-meter, .game-app .fighters-hud.many-players .charge-meter { bottom: 2px; }
+  .game-app .fighters-hud.many-players .combat-state { bottom: 19px; max-width: 55%; font-size: 5px; }
+  .game-app.scene-arena:has(.fighters-hud.many-players) { --touch-bottom: calc(184px + env(safe-area-inset-bottom)); }
+}
+/* Battle setup: compact real roster, eight independently configurable seats.
+   Metal frames are CSS, not copied game interface artwork. */
+.game-app .menu-layer { padding: 16px clamp(12px, 2.5vw, 40px) 20px; background: repeating-linear-gradient(135deg, #ffffff02 0 55px, transparent 55px 120px), #071122; }
+.game-app .menu-layer::before { background: linear-gradient(130deg, #65707925, transparent 35%); }
+.game-app .stage-select, .game-app .battle-online { --metal-light: #bcc4cc; --metal-mid: #65717e; --metal-dark: #202b38; width: 100%; max-width: 1160px; margin: 0 auto; }
+/* Character select is full-bleed like the original: no centered narrow column. */
+.game-app .battle-select { --metal-light: #bcc4cc; --metal-mid: #65717e; --metal-dark: #202b38; width: 100%; max-width: none; margin: 0 auto; }
+.game-app .battle-logo h2 { margin: 0; color: #050910; font: italic 1000 clamp(24px, 3.2vw, 40px)/1 Impact, "Arial Narrow", Arial, sans-serif; letter-spacing: -1px; text-shadow: 1px 1px #d4d9df66; }
+.game-app .versus-medallion { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #adb9c5; border-radius: 50%; background: #0b1728; color: #c8d5e0; font: 950 17px Arial, sans-serif; }
+.game-app .battle-rule-title span { color: #b0c2d8; white-space: nowrap; }
+.game-app .battle-select-heading { display: flex; align-items: stretch; gap: 0; min-height: 54px; margin: 0 0 6px; padding: 0; border: 0; background: #0a1220; box-shadow: 0 3px 0 #020810; overflow: hidden; }
+.game-app .battle-back { order: -1; flex-shrink: 0; display: flex; align-items: center; min-height: 0; padding: 8px 18px 8px 12px; border: 0; background: #e8eaee; color: #141a24; font: 950 15px Arial, sans-serif; letter-spacing: 1px; clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
+.game-app .battle-back:hover { background: #fff; }
+.game-app .battle-logo { display: flex; align-items: center; gap: 9px; padding: 8px 26px 8px 22px; background: linear-gradient(160deg, #e03434, #9c1414); clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
+.game-app .battle-logo h2 { color: #fff; text-shadow: 2px 2px #00000088; }
+.game-app .versus-medallion { border-color: #ffffff88; background: #141a24; color: #fff; }
+.game-app .battle-rule-title { background: #e8eaee; color: #141a24; }
+.game-app .battle-rule-title span { color: #4a5462; }
+.game-app .battle-rule-title { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; margin-left: -14px; padding: 9px 14px 9px 28px; border: 0; background: #1b2740; color: #fff; font: 900 clamp(13px, 2vw, 23px)/1.1 Arial, sans-serif; text-align: center; letter-spacing: 1px; clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%); }
+/* Character grid mirrors the original select screen: a full-width dense tile matrix
+   (auto-fill, so wide screens gain columns instead of side gutters), portrait
+   above its name plate, seat tokens for occupants and the glove cursor for the
+   choosing seat. Tiles stay compact so the whole screen fits one viewport. */
+.game-app .battle-select { display: flex; flex-direction: column; min-height: 0; }
+.game-app .roster-tray { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 10px 8px; background: repeating-linear-gradient(0deg, #132034 0 6px, #172439 6px 8px); border: 1px solid #8296aa66; border-top: 3px ridge #c6ced4; }
+.game-app .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 4px; width: 100%; }
+.game-app .roster-fighter { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; width: 100%; min-width: 0; padding: 0; border: 2px solid #aeb8ca; border-color: #d3dae6 #7c879c #5d677b #b6c0d1; border-radius: 5px; overflow: hidden; color: #fff; background: #2a3145; box-shadow: inset 0 0 0 1px #0007, 2px 3px 0 #000a; text-align: center; transition: filter .1s ease; }
+.game-app .roster-fighter[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 3px var(--chooser-color, #ffd839), 2px 3px 0 #000b; z-index: 2; }
+.game-app .roster-fighter:hover:not(:disabled) { filter: brightness(1.2); }
+.game-app .roster-portrait { display: block; position: relative; height: clamp(48px, 7dvh, 68px); overflow: hidden; background: repeating-linear-gradient(0deg, #0000 0 3px, #1a223a1f 3px 4px), linear-gradient(180deg, #a3aec6 0%, #7f8bab 38%, #56617f 72%, #3a4360 100%); }
+/* The capture is already a bust framed from the fighter's own silhouette (menu-previews.ts),
+   so every tile shape just covers from the head down — no per-fighter offsets. */
+.game-app .roster-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 50% 0; pointer-events: none; transition: transform .12s ease; }
+.game-app .roster-fighter:hover:not(:disabled) .roster-portrait img, .game-app .roster-fighter[aria-pressed="true"] .roster-portrait img { transform: scale(1.07); transform-origin: 50% 20%; }
+/* Mr. Game & Watch spawns pure black (original ftDataGamewatch diffuse): a light
+ * spotlight keeps his silhouette legible on the dark roster without touching game data. */
+.game-app .roster-Gw .roster-portrait { background: repeating-linear-gradient(0deg, #0000 0 3px, #1a223a1f 3px 4px), linear-gradient(180deg, #c9d1e2 0%, #a2adc6 45%, #6d7895 100%); }
+.game-app .roster-portrait > span { display: grid; place-items: center; height: 100%; font: 900 26px Arial, sans-serif; color: #cdd9e5; }
+.game-app .roster-fighter > strong { position: static; z-index: 1; padding: 3px 1px 2px; background: linear-gradient(180deg, #2b1a22 0%, #170d13 100%); border-top: 1px solid #c9d2e266; color: #f1efe6; text-shadow: 0 1px 0 #000; font: 900 9px/1.2 Arial, sans-serif; text-transform: uppercase; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Zelda/Sheik paired slot: one Melee roster entry, two starting-form halves. */
+.game-app .roster-pair { grid-column: span 2; }
+.game-app .roster-pair-halves { display: grid; grid-template-columns: 1fr 1fr; min-width: 0; }
+.game-app .roster-half { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; padding: 0; border: 0; border-right: 1px solid #ffffff2a; color: #fff; background: transparent; text-align: center; }
+.game-app .roster-half:last-child { border-right: 0; }
+.game-app .roster-half[aria-pressed="true"] { background: #ffffff17; box-shadow: inset 0 0 0 2px var(--chooser-color, #ffd839); }
+.game-app .roster-half:hover:not(:disabled) { filter: brightness(1.25); }
+.game-app .roster-half > strong { position: static; z-index: 1; padding: 3px 1px 2px; background: linear-gradient(180deg, #2b1a22 0%, #170d13 100%); border-top: 1px solid #c9d2e266; color: #f1efe6; text-shadow: 0 1px 0 #000; font: 900 9px/1.2 Arial, sans-serif; text-transform: uppercase; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .roster-pair-caption { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 3px 1px 2px; background: #05070c; border-top: 1px solid #ffffff2a; }
+.game-app .roster-pair-caption strong { color: #ffd839; font: 900 9px/1.2 Arial, sans-serif; letter-spacing: .4px; white-space: nowrap; }
+.game-app .roster-pair-caption span { color: #9fb2c7; font: 8px/1.2 var(--mono); white-space: nowrap; }
+.game-app .seat-transform-hint { position: absolute; left: 6%; right: 6%; bottom: 8px; z-index: 1; color: #cfe3f5; font: 800 8px/1.2 Arial, sans-serif; text-align: center; letter-spacing: .4px; }
+.game-app .roster-assignments { position: absolute; top: 1px; left: 1px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 1px; pointer-events: none; }
+.game-app .seat-token { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 20px; height: 16px; padding: 1px 3px; border: 1px solid #fff8; background: var(--seat-color); color: var(--seat-ink); font: 950 9px Arial, sans-serif; line-height: 1; pointer-events: none; }
+.game-app .cursor-token { position: relative; width: 32px; height: 32px; border: 3px solid #fff; border-radius: 50%; outline: 2px solid #171e28; box-shadow: 1px 3px 0 #0008; font-size: 13px; transform: rotate(-10deg); }
+.game-app .cursor-token::before { content: ""; position: absolute; top: -11px; left: -5px; width: 9px; height: 18px; border: 1px solid #4a5869; border-radius: 6px 6px 0 0; background: #fff; transform: rotate(-35deg); }
+.game-app .roster-cursor { position: absolute; z-index: 3; right: -9px; top: -13px; pointer-events: none; }
+.game-app .roster-cursor .cursor-token { width: 38px; height: 38px; font-size: 15px; }
+.game-app .roster-scope { flex: none; max-width: none; display: flex; align-items: baseline; gap: 10px; color: #a0b0c4; font: 9px/1.65 var(--mono); }
+.game-app .roster-scope strong { display: inline; margin-bottom: 0; color: #ecf0f3; font: italic 950 17px Arial, sans-serif; letter-spacing: -.5px; }
+.game-app .roster-scope { justify-content: flex-end; font-size: 8px; }
+.game-app .seat-selection-hint { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 18px; margin: 2px 0; color: #b9c9db; font: 10px Arial, sans-serif; }
+.game-app .player-seat-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+.game-app .player-seat { position: relative; display: grid; grid-template-rows: 24px minmax(0, 1fr) 26px; min-width: 0; height: clamp(104px, 13dvh, 156px); padding: 0; border: 3px ridge #a5aeb8; border-radius: 6px; background: #17202e; color: #fff; box-shadow: 2px 4px 0 #0008; overflow: hidden; }
+.game-app .player-seat.active-seat { border-color: #ffdb4d; box-shadow: 0 0 0 2px #ffe445, 2px 4px 0 #000b; z-index: 1; }
+.game-app .player-seat[data-control="human"] .seat-control-strip { background: linear-gradient(#8a97a5, #55616e); }
+.game-app .active-seat .seat-control-strip { background: linear-gradient(180deg, var(--seat-color), #0b1324 175%); }
+.game-app .active-seat .seat-control-strip select { color: #fff; text-shadow: 1px 1px #000; }
+.game-app .active-seat .seat-select { background: repeating-linear-gradient(0deg, #ffffff09 0 8px, #ffffff11 8px 10px), linear-gradient(168deg, var(--seat-color), #0b1324 135%); }
+.game-app .seat-control-strip { position: relative; z-index: 2; display: flex; align-items: center; gap: 5px; min-width: 0; background: linear-gradient(#8a97a5, #55616e); border-bottom: 2px ridge #bbc3ca; }
+.game-app .seat-number { display: grid; place-items: center; align-self: stretch; min-width: 26px; padding-inline: 3px; background: var(--seat-color); color: var(--seat-ink); border-right: 2px ridge #b6c1cd; font: italic 950 13px Arial, sans-serif; }
+.game-app .seat-kind-label { display: flex; flex: 1; min-width: 0; }
+.game-app .seat-kind-label select { width: 100%; height: 22px; min-width: 0; padding: 1px 3px; border: 0; border-radius: 0; background: transparent; color: #080d17; font: 950 10px Arial, sans-serif; letter-spacing: .4px; }
+.game-app .seat-kind-label select option { background: #d0d5dd; color: #101720; }
+.game-app .seat-kind-label select:disabled { color: #202a3b; opacity: .75; }
+.game-app .seat-level-label { display: flex; flex: 0 0 auto; min-width: 0; border-left: 2px ridge #b6c1cd; }
+.game-app .seat-level-label select { width: 46px; height: 22px; min-width: 0; padding: 1px 2px; border: 0; border-radius: 0; background: transparent; color: #080d17; font: 950 10px Arial, sans-serif; letter-spacing: 0; }
+.game-app .seat-level-label select option { background: #d0d5dd; color: #101720; }
+.game-app .seat-level-label select:disabled { color: #202a3b; opacity: .75; }
+.game-app .seat-select { position: relative; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border: 0; border-radius: 0; color: #fff; background: repeating-linear-gradient(0deg, #ffffff04 0 8px, #ffffff0a 8px 10px), linear-gradient(120deg, #253047, #0b1324); text-align: left; }
+.game-app .seat-select:disabled { opacity: 1; cursor: default; }
+.game-app .player-seat[data-control="off"] .seat-select { background: linear-gradient(#c3ccd6, #959ea8); }
+.game-app .player-seat[data-control="off"] .seat-number { background: #79828d; color: #1b212b; }
+.game-app .player-seat[data-control="cpu"] .seat-control-strip { background: linear-gradient(#a6a0ad, #777284); }
+.game-app .seat-emblem { position: absolute; inset: 0; display: grid; place-items: center; color: #0003; font: italic 1000 44px Arial, sans-serif; letter-spacing: -4px; transform: rotate(-10deg); }
+.game-app .seat-portrait { position: absolute; width: 83%; height: 118%; left: 50%; top: -5%; transform: translateX(-50%); object-fit: contain; object-position: 50% 0; filter: drop-shadow(3px 4px 2px #0007); pointer-events: none; }
+/* Pure-black Game & Watch silhouette: a faint light halo keeps the seat readable. */
+.game-app .seat-portrait.portrait-Gw { filter: drop-shadow(0 0 5px #d5dcea) drop-shadow(3px 4px 2px #0007); }
+.game-app .seat-fallback { position: absolute; top: 8%; right: 15%; color: var(--seat-color); font: italic 900 49px Arial, sans-serif; }
+.game-app .seat-fighter-name { position: absolute; left: 6%; right: 6%; bottom: 24px; z-index: 1; padding: 3px 4px 2px; color: #10151d; background: #f4f6f8; border: 2px solid #10151d; font: 900 11px/1.1 Arial, sans-serif; text-align: center; text-transform: uppercase; box-shadow: 2px 2px 0 #0007; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .seat-costume-strip { position: absolute; left: 6%; right: 6%; bottom: 3px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+.game-app .seat-costume-name { flex: 1; min-width: 0; padding: 1px 2px; color: #e8eef5; background: #10151dc9; border: 1px solid #ffffff2e; border-radius: 3px; font: 800 9px/1.4 Arial, sans-serif; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .seat-costume-arrow { padding: 1px 5px; color: #10151d; background: #f4f6f8; border: 1px solid #10151d; border-radius: 3px; font: 800 9px/1.4 Arial, sans-serif; cursor: pointer; }
+.game-app .seat-costume-arrow:disabled { opacity: .45; cursor: default; }
+.game-app .player-seat[data-control="off"] .seat-fighter-name { top: 0; bottom: 0; left: 0; right: 0; display: grid; place-items: center; padding: 0; background: none; border: 0; box-shadow: none; color: #4a545f; font: italic 950 40px Arial, sans-serif; letter-spacing: 2px; }
+.game-app .seat-ordinal { position: absolute; left: 0; right: 0; bottom: 2px; color: #aab6c455; font: italic 1000 15px/1 Arial, sans-serif; text-align: center; letter-spacing: 1px; pointer-events: none; }
+.game-app .active-seat .seat-ordinal { color: #6b510766; }
+.game-app .player-seat[data-control="off"] .seat-ordinal { display: none; }
+.game-app .seat-select > .cursor-token { position: absolute; left: 6px; top: 6px; }
+.game-app .seat-footer { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; padding: 3px 7px; border-top: 1px solid #6f7d9155; background: #090f1c; }
+.game-app .seat-footer strong { color: var(--seat-color); font: 850 9px Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .seat-footer > span { color: #879ab3; font: 7px var(--mono); letter-spacing: .3px; }
+.game-app .seat-team { align-self: flex-start; padding: 1px 6px; border: 1px solid var(--team-color); border-radius: 3px; color: var(--team-color); font: 850 8px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .locked-seat .seat-footer > span { color: #a6b2c3; }
+.game-app .battle-select-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 6px; padding: 7px 12px; border: 2px ridge #a6b2bd; background: linear-gradient(#354352, #1d2b3c); }
+.game-app .battle-rule-controls { display: flex; align-items: center; gap: 15px; }
+.game-app .battle-rule-controls label { display: flex; align-items: center; gap: 6px; color: #c1cdda; font: 850 10px Arial, sans-serif; letter-spacing: .5px; }
+.game-app .battle-rule-controls select { min-height: 29px; padding: 5px 8px; border: 2px ridge #94a6b7; border-radius: 0; color: #fff; background: #0c1728; font: 850 11px Arial, sans-serif; }
+.game-app .battle-active-count { display: flex; align-items: baseline; gap: 5px; margin-left: auto; color: #b3c4d7; font: 8px var(--mono); }
+.game-app .battle-active-count strong { color: #fff; font: italic 950 24px Arial, sans-serif; }
+.game-app .battle-next { min-height: 34px; padding: 6px 18px; border: 2px outset #fff08a; border-radius: 1px; background: linear-gradient(#ffe46b, #eeb72c); color: #15110a; font: italic 950 15px Arial, sans-serif; text-transform: uppercase; letter-spacing: .3px; box-shadow: 1px 2px 0 #0008; }
+.game-app .battle-next:hover:not(:disabled) { background: #fff09a; }
+/* Melee-style stage select: one dense icon grid (15 stages + RANDOM = 16 tiles)
+   that fits a single desktop viewport with no scrolling. Per-tile blurbs move
+   to the detail strip below the grid so tiles stay short and uniform. */
+.game-app .stage-select.melee-stage-select { display: flex; flex-direction: column; min-height: 0; }
+.game-app .melee-stage-grid.battle-stage-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: none; margin: 12px auto 10px; align-content: start; }
+.game-app .melee-tile.battle-stage { min-width: 0; padding: 0 0 5px; border: 2px solid #000; border-radius: 3px; color: #fff; background: #0a1220; box-shadow: inset 0 0 0 1px #ffffff22, 2px 2px 0 #0009; text-align: center; transition: filter .1s ease, transform .1s ease; }
+.game-app .melee-tile.battle-stage:hover:not(:disabled) { filter: brightness(1.25); transform: translateY(-2px); }
+.game-app .melee-tile.battle-stage[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px #ffe445, 2px 3px 0 #000b; z-index: 1; }
+.game-app .melee-tile .battle-stage-image { position: relative; display: block; height: clamp(56px, 10dvh, 96px); overflow: hidden; background: #152037; border-radius: 1px 1px 0 0; }
+.game-app .melee-tile .battle-stage-image img, .game-app .melee-tile .battle-stage-image svg { width: 100%; height: 100%; object-fit: cover; color: #bed1e4; }
+.game-app .melee-tile .battle-stage-selected { position: absolute; right: 4px; bottom: 4px; padding: 2px 5px; border: 1px solid #7687a0; background: #060b18d9; color: #b1c4dd; font: 850 7px Arial, sans-serif; letter-spacing: .4px; }
+.game-app .melee-tile.battle-stage[aria-pressed="true"] .battle-stage-selected { color: #ffe35d; border-color: #ffe35d; }
+.game-app .melee-tile.battle-stage > strong { display: block; padding: 5px 4px 1px; border-top: 1px solid #ffffff2a; font: 900 10px/1.25 Arial, sans-serif; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .melee-tile.battle-stage > small { display: none; }
+.game-app .melee-random .melee-random-image { display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #2b354d, #080e1c 75%); }
+.game-app .melee-random-image > span { color: var(--game-gold); font: italic 950 34px Arial, sans-serif; text-shadow: 2px 2px 0 #000; }
+.game-app .melee-stage-detail { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; padding: 8px 12px; border: 2px ridge #a6b2bd; background: linear-gradient(#2c3a50, #182435); }
+.game-app .melee-preview { display: block; flex-shrink: 0; width: 132px; height: 68px; overflow: hidden; border: 2px solid #000; background: #0b1526; color: #bed1e4; }
+.game-app .melee-preview img, .game-app .melee-preview svg { width: 100%; height: 100%; object-fit: cover; }
+.game-app .melee-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.game-app .melee-info strong { color: var(--game-gold); font: italic 950 20px/1 Arial, sans-serif; text-transform: uppercase; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .melee-info span { display: block; color: #a9bccd; font-size: 10px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .melee-random-button { flex-shrink: 0; min-height: 34px; }
+.game-app .stage-ready-bar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 13px 17px; border-block: 3px solid #edd75a; background: repeating-linear-gradient(135deg, #8e1624 0 20px, #a01b2b 20px 40px); }
+.game-app .stage-ready-bar > span { font: italic 950 24px Arial, sans-serif; text-transform: uppercase; text-shadow: 1px 2px #0008; }
+.game-app .stage-ready-bar .battle-next { min-width: 220px; }
+/* Main menu speaks Melee: a blue tech-frame panel over a faint grid, a silver
+   italic title, and a staggered stack of gold chevron banners with ring knobs.
+   The yellow fill is hover/focus feedback only, never a fake selection.
+   All artwork is CSS; no game assets are copied. */
+.game-app .mode-select { position: relative; isolation: isolate; max-width: 760px; margin: min(6dvh, 56px) auto 0; padding: clamp(20px, 3.5vw, 38px) clamp(18px, 4vw, 44px) 26px; text-align: left; overflow: hidden; border: 2px solid #4a6bff55; border-radius: 22px; background: radial-gradient(120% 60% at 85% -10%, #3b6bff2e, transparent 55%), radial-gradient(100% 55% at 8% 110%, #ffcf4022, transparent 55%), repeating-linear-gradient(0deg, transparent 0 23px, #8fb4ff10 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #8fb4ff10 23px 24px), linear-gradient(160deg, #101b31f2, #070c18f5); box-shadow: 0 0 0 1px #060a14, 0 0 46px #2a4bff26, 0 24px 70px #000a; }
+.game-app .mode-game-mark { display: inline-block; color: #eef2f8; font: italic 1000 clamp(44px, 7vw, 78px)/1 Impact, "Arial Narrow", Arial, sans-serif; letter-spacing: -3px; transform: skewX(-6deg); text-shadow: 3px 3px 0 #c81e3a, 6px 6px 0 #0009; }
+.game-app .mode-game-mark > span { color: #ffcf40; }
+.game-app .mode-select h2 { margin: 10px 0 26px; padding: 0 0 10px; border: 0; border-bottom: 3px solid #ffcf40; background: none; color: #cfd8e6; font: italic 900 clamp(19px, 2.6vw, 27px)/1 Arial, sans-serif; letter-spacing: 5px; text-shadow: 2px 2px 0 #000; }
+.game-app .mode-choices { display: flex; flex-direction: column; gap: 0; }
+.game-app .mode-choice { --banner-gold: #e8a91c; position: relative; isolation: isolate; display: flex; align-items: center; gap: 18px; min-width: 0; min-height: 92px; margin-top: -7px; padding: 12px 26px 12px 62px; border: 0; border-radius: 0; color: #ffcf40; background: linear-gradient(180deg, var(--banner-gold), #9c6b0e); text-align: left; cursor: pointer; clip-path: polygon(30px 0, 100% 0, 100% 100%, 30px 100%, 0 50%); filter: drop-shadow(0 4px 0 #0009); transition: transform .15s ease, filter .15s ease; }
+.game-app .mode-choice:first-child { margin-top: 0; }
+/* Diagonal cascade: the step comes from --mode-index (web/src/play/mode-select.tsx),
+ * so adding a mode keeps the stagger instead of resetting the new banner to flush left. */
+.game-app .mode-choice { --mode-step: 20px; margin-left: calc(var(--mode-index, 0) * var(--mode-step)); }
+.game-app .mode-choice::before { content: ""; position: absolute; inset: 4px; z-index: 0; background: linear-gradient(180deg, #141f39f5, #080e1df5); clip-path: polygon(27px 0, 100% 0, 100% 100%, 27px 100%, 0 50%); transition: background .15s ease; }
+.game-app .mode-choice > * { position: relative; z-index: 1; }
+.game-app .mode-choice:hover:not(:disabled), .game-app .mode-choice:focus-visible { transform: translateX(10px) scale(1.015); filter: drop-shadow(0 6px 16px #ffcf4066); background: linear-gradient(180deg, #ffe46b, #f0b41c); }
+.game-app .mode-choice:hover:not(:disabled)::before, .game-app .mode-choice:focus-visible::before { background: linear-gradient(180deg, #ffe46b, #f0b41c); }
+.game-app .mode-symbol { display: grid; place-items: center; flex-shrink: 0; width: 56px; height: 56px; border: 3px solid #ffcf40; border-radius: 50%; background: #0a1222; font: italic 950 20px Arial, sans-serif; color: #ffcf40; box-shadow: 0 0 12px #ffcf4033, inset 0 0 8px #000; }
+.game-app .mode-label { flex: 1 1 auto; min-width: 0; }
+.game-app .mode-choice strong { display: block; color: #ffcf40; font: italic 950 clamp(22px, 3.4vw, 33px)/1 Arial, sans-serif; letter-spacing: -.5px; text-shadow: 2px 2px 0 #000; }
+.game-app .mode-choice small { display: block; margin-top: 7px; color: #9fb0c9; font: 10px Arial, sans-serif; }
+.game-app .mode-choice:hover:not(:disabled) strong, .game-app .mode-choice:focus-visible strong { color: #191204; text-shadow: none; }
+.game-app .mode-choice:hover:not(:disabled) small, .game-app .mode-choice:focus-visible small { color: #5a4510; }
+/* Emoji symbols tinted to the gold of the lettered ones (VS, LAN), and to dark ink
+ * on the gold hover/focus plate, so one row never reads as full-colour clip art. */
+.game-app .mode-symbol-picture { transform: scale(.82); filter: grayscale(1) sepia(.95) saturate(2.6) hue-rotate(-12deg) brightness(.98) contrast(1.05); }
+.game-app .mode-choice:hover:not(:disabled) .mode-symbol-picture, .game-app .mode-choice:focus-visible .mode-symbol-picture { filter: grayscale(1) brightness(.22); }
+.game-app .mode-choice:hover:not(:disabled) .mode-symbol, .game-app .mode-choice:focus-visible .mode-symbol { border-color: #191204; background: transparent; color: #191204; box-shadow: none; }
+.game-app .mode-arrow { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; margin-left: auto; border: 3px solid #ffcf40; border-radius: 50%; background: #0a1222; color: #ffcf40; font-size: 16px; box-shadow: 0 0 12px #ffcf4044; }
+.game-app .mode-choice:hover:not(:disabled) .mode-arrow, .game-app .mode-choice:focus-visible .mode-arrow { border-color: #191204; background: transparent; color: #191204; box-shadow: none; }
+.game-app .mode-prompt { max-width: 520px; margin: 26px auto 0; padding: 10px 22px; border: 2px solid #c8d2e2; border-radius: 12px; background: linear-gradient(180deg, #141f36, #0a1120); color: #e8edf5; font: italic 800 15px Arial, sans-serif; text-align: center; box-shadow: 0 3px 0 #0009; }
+.game-app .mode-prompt-error { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 auto 18px; border-color: #ff6b7a; color: #ffd9dd; font: 700 13px/1.5 Arial, sans-serif; font-style: normal; overflow-wrap: anywhere; }
+.game-app .mode-prompt-error strong { color: #ff8f9b; font: italic 800 15px Arial, sans-serif; }
+.game-app .mode-prompt-error button { padding: 8px 28px; border: 0; border-radius: 4px; background: #ffe769; color: #0b1020; font: 800 14px Arial, sans-serif; cursor: pointer; }
+.game-app .mode-research-note { margin-top: 14px; text-align: center; color: #7489a6; font: 9px/1.8 var(--mono); }
+@media (prefers-reduced-motion: no-preference) {
+  /* Same index as the cascade, so every banner flies in on its own beat. */
+  .game-app .mode-choice { animation: mode-banner-in .45s backwards; animation-delay: calc(var(--mode-index, 0) * .06s); }
+  @keyframes mode-banner-in { from { opacity: 0; transform: translateX(-46px); } to { opacity: 1; transform: none; } }
+}
+.game-app .battle-online #active-room-code { font-size: 25px; letter-spacing: 4px; }
+.game-app .room-gateway { max-width: 800px; margin: 28px auto; padding: 20px; border: 3px ridge #a5b2c0; background: #152237; text-align: center; }
+.game-app .room-gateway-mark { color: #93a4ba; font: italic 950 58px Arial, sans-serif; }
+.game-app .room-gateway > p { color: #a1b3ca; font-size: 12px; }
+.game-app .room-gateway .room-entry { justify-content: center; margin: 20px 0 0; padding: 17px 0 0; border: 0; border-top: 2px ridge #65788e; background: none; text-align: left; }
+.game-app .room-browser { margin: 20px 0 0; padding: 17px 0 0; border-top: 2px ridge #65788e; text-align: left; }
+.game-app .room-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #dce5f5; font: 850 12px Arial, sans-serif; letter-spacing: 1px; }
+.game-app .room-browser-heading .secondary { min-height: 32px; padding: 6px 12px; font-size: 10px; }
+.game-app .room-list { list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 12px 0 0; padding: 0; }
+.game-app .room-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #a6baff20; background: linear-gradient(120deg, #182035aa, #10192aaa); }
+.game-app .room-row-main { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.game-app .room-row-main strong { color: var(--game-gold); font: 850 16px var(--mono); letter-spacing: 3px; }
+.game-app .room-row-main > span { color: #9aadc9; font: 9px/1.6 var(--mono); }
+.game-app .room-incompatible { color: #ffb077; border: 1px solid #ffb07744; padding: 2px 6px; }
+.game-app .room-full { color: #93a4ba; border: 1px solid #93a4ba44; padding: 2px 6px; }
+.game-app .room-row .battle-next { min-height: 36px; padding: 8px 16px; font-size: 12px; }
+.game-app .battle-online .network-status { margin: 8px 0; }
+.game-app .battle-online .lan-warning { margin: 8px 0 0; font-size: 8px; }
+.game-app .lan-ready-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 13px; padding: 0; }
+.game-app .lan-ready-list li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #a6baff20; background: #10192aaa; font: 9px/1.6 var(--mono); color: #9aadc9; }
+.game-app .lan-ready-list .lan-ready-seat { color: #93a4ba; font-weight: 850; }
+.game-app .lan-ready-list .lan-ready-name { color: #dce5f5; font-weight: 850; overflow-wrap: anywhere; }
+.game-app .lan-ready-list .lan-ready-state { padding: 2px 8px; border: 1px solid #93a4ba44; color: #93a4ba; letter-spacing: 1px; }
+.game-app .lan-ready-list li.is-ready { border-color: #74e6c644; }
+.game-app .lan-ready-list li.is-ready .lan-ready-state { border-color: #74e6c688; color: #74e6c6; }
+/* Settings entry points: home settings section + scene-header icons (the old bottom system bar is gone; everything else lives in OPTIONS). */
+.game-app .system-menu { display: flex; align-items: center; }
+.game-app .system-menu-header { order: 2; flex-shrink: 0; gap: 6px; padding: 0 10px; background: #1b2740; }
+.game-app .system-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 2px ridge #7d8fa3; border-radius: 2px; background: #0f1a2e; color: #e8edf5; font-size: 19px; line-height: 1; cursor: pointer; }
+.game-app .system-icon:hover:not(:disabled), .game-app .system-icon:focus-visible { border-color: var(--game-gold); color: var(--game-gold); }
+.game-app .system-icon:disabled { opacity: .45; cursor: default; }
+.game-app .system-icon.is-live::after { content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: #5ee08a; box-shadow: 0 0 6px #5ee08a; }
+.game-app .system-menu .icon-action { width: 38px; height: 38px; }
+.game-app .system-menu-home { flex-shrink: 0; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; margin: 12px auto 0; }
+.game-app .system-entry { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 14px; border: 2px ridge #7d8fa3; border-radius: 3px; background: linear-gradient(180deg, #172234, #0d1626); color: #d4dfed; font: italic 800 13px Arial, sans-serif; letter-spacing: .5px; text-transform: uppercase; cursor: pointer; }
+/* Home: the fullscreen toggle joins the labelled chip row instead of sitting alone
+ * as an unlabelled square; its .action-label is screen-reader-only everywhere else. */
+.game-app .system-menu-home .icon-action { width: auto; height: auto; min-height: 36px; gap: 7px; padding: 6px 14px; border: 2px ridge #7d8fa3; border-radius: 3px; background: linear-gradient(180deg, #172234, #0d1626); color: #d4dfed; font: italic 800 13px Arial, sans-serif; letter-spacing: .5px; text-transform: uppercase; backdrop-filter: none; }
+.game-app .system-menu-home .icon-action:hover:not(:disabled), .game-app .system-menu-home .icon-action:focus-visible { border-color: var(--game-gold); color: #fff; background: linear-gradient(180deg, #172234, #0d1626); }
+.game-app .system-menu-home .icon-action > span[aria-hidden] { font-size: 16px; }
+.game-app .system-menu-home .icon-action .action-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; }
+.game-app .system-entry:hover:not(:disabled), .game-app .system-entry:focus-visible { border-color: var(--game-gold); color: #fff; }
+.game-app .system-entry:disabled { opacity: .5; cursor: default; }
+.game-app .system-entry .system-glyph { font-style: normal; font-size: 16px; }
+.game-app .system-status { padding: 2px 6px; border-radius: 2px; background: #0b1326; color: #8fa2c0; font: normal 9px var(--mono); letter-spacing: .3px; text-transform: none; }
+.game-app .system-entry.is-live .system-status { color: var(--game-gold); }
+/* App/game versions + update button (Android app only): home settings section and Options. */
+.game-app .app-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; }
+.game-app .app-update-home { flex: 1 1 100%; margin-top: 2px; }
+.game-app .app-update-options { justify-content: flex-start; margin-top: 8px; }
+.game-app .app-update-version { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; color: #8fa2c0; font: 10px var(--mono); letter-spacing: .3px; }
+.game-app .app-update-version > span { white-space: nowrap; }
+.game-app .app-update-button { min-height: 30px; padding: 5px 12px; border: 2px ridge #7d8fa3; border-radius: 3px; background: #0f1a2e; color: #d4dfed; font: italic 800 11px Arial, sans-serif; letter-spacing: .4px; text-transform: uppercase; cursor: pointer; }
+.game-app .app-update-button:hover:not(:disabled), .game-app .app-update-button:focus-visible { border-color: var(--game-gold); color: #fff; }
+.game-app .app-update-button:disabled { opacity: .6; cursor: progress; }
+.game-app .app-update.has-update .app-update-button { border-color: var(--game-gold); background: linear-gradient(180deg, #ffe769, #e8a91c); color: #0b1020; }
+.game-app .app-update-detail { flex-basis: 100%; text-align: center; color: #9fb2cc; font: 9px var(--mono); overflow-wrap: anywhere; }
+.game-app .app-update-options .app-update-detail { text-align: left; }
+.game-app .system-corner { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 30; }
+.game-app .system-corner .system-menu-header { padding: 4px; border-radius: 3px; background: #0b1326cc; }
+/* Header settings cog menu (web/src/play/system-menu.tsx): Options · Controllers · Fullscreen. */
+.game-app .system-menu-toggle[aria-expanded="true"] { border-color: var(--game-gold); color: var(--game-gold); }
+.game-app .system-menu-popover { position: fixed; z-index: 58; display: flex; flex-direction: column; gap: 4px; min-width: 210px; max-width: calc(100vw - 12px); padding: 6px; border: 2px ridge #7d8fa3; border-radius: 4px; background: linear-gradient(180deg, #172234f7, #0b1326f7); box-shadow: 0 12px 30px #000c; animation: system-menu-in .12s ease both; }
+.game-app .system-menu-popover[hidden] { display: none; }
+@keyframes system-menu-in { from { opacity: 0; } to { opacity: 1; } }
+.game-app .system-menu-popover :is(.system-menu-item, .icon-action) { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 40px; padding: 6px 12px; border: 1px solid #ffffff14; border-radius: 3px; background: #0f1a2e; color: #e8edf5; font: italic 800 13px Arial, sans-serif; letter-spacing: .5px; text-align: left; text-transform: uppercase; justify-content: flex-start; cursor: pointer; }
+.game-app .system-menu-popover :is(.system-menu-item, .icon-action):hover:not(:disabled), .game-app .system-menu-popover :is(.system-menu-item, .icon-action):focus-visible { border-color: var(--game-gold); color: #fff; background: #1b2740; }
+.game-app .system-menu-popover .system-menu-item:disabled { opacity: .5; cursor: default; }
+.game-app .system-menu-popover .system-menu-glyph, .game-app .system-menu-popover .icon-action > span[aria-hidden] { flex: none; width: 22px; font-size: 17px; font-style: normal; text-align: center; }
+.game-app .system-menu-popover .system-menu-item small { margin-left: auto; padding: 2px 6px; border-radius: 2px; background: #0b1326; color: #8fa2c0; font: normal 9px var(--mono); letter-spacing: .3px; text-transform: none; white-space: nowrap; }
+.game-app .system-menu-popover .system-menu-item.is-live small { color: var(--game-gold); }
+.game-app .system-menu-popover .icon-action .action-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; white-space: nowrap; }
+.game-app .options-about .tools-links { margin-top: 6px; color: #95a7c2; font-size: 11px; }
+.game-app .options-about .tools-links a { margin-right: 14px; color: var(--game-gold); }
+/* The menu status line stays readable to assistive tech and tests, without a visible strip. */
+.game-app .menu-layer > .load-progress { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.game-app .hud-slot small { margin-left: 4px; font: 800 6px Arial, sans-serif; }
+.game-app .fighter-card[data-controller-kind="cpu"] .player-label { letter-spacing: 1px; }
+@media (max-width: 950px) {
+  .game-app .roster-grid { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 4px; }
+  .game-app .roster-fighter { width: 100%; }.game-app .roster-portrait { height: 66px; }
+  .game-app .roster-tray { gap: 8px; padding-inline: 10px; }
+  .game-app .roster-fighter > strong { font-size: 8px; letter-spacing: .3px; }
+  .game-app .player-seat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .game-app .seat-fighter-name { font-size: 14px; }
+  .game-app .melee-stage-grid.battle-stage-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .game-app .battle-select-heading { gap: 8px; padding-left: 7px; padding-right: 42px; min-height: 58px; }
+  .game-app .battle-logo h2 { font-size: 28px; letter-spacing: -1px; }.game-app .versus-medallion { display: none; }
+  .game-app .battle-rule-title { font-size: 12px; padding: 7px; letter-spacing: 0; }.game-app .battle-back { padding: 7px; font-size: 12px; min-height: 35px; }
+  .game-app .roster-tray { padding: 10px 7px; }.game-app .roster-grid { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+  .game-app .roster-fighter { width: 100%; }.game-app .roster-portrait { height: 64px; }
+  .game-app .roster-fighter > strong { font-size: 7px; }.game-app .roster-cursor { right: -4px; top: -10px; }.game-app .roster-cursor .cursor-token { width: 28px; height: 28px; font-size: 12px; }
+  .game-app .player-seat-grid { gap: 8px; }.game-app .player-seat { height: 172px; grid-template-rows: 26px minmax(0, 1fr) 29px; }
+  .game-app .seat-number { min-width: 27px; font-size: 13px; }.game-app .seat-kind-label select { padding-inline: 3px; font-size: 10px; letter-spacing: 0; }
+  .game-app .seat-fighter-name { font-size: 11px; bottom: 26px; }.game-app .seat-ordinal { font-size: 19px; bottom: 2px; }
+  .game-app .seat-select > .cursor-token { left: 4px; top: 4px; width: 26px; height: 26px; font-size: 11px; }
+  .game-app .seat-footer { padding-inline: 4px; }.game-app .seat-footer strong { font-size: 8px; }.game-app .seat-footer > span { font-size: 6px; letter-spacing: 0; }
+  .game-app .seat-selection-hint { font-size: 9px; }.game-app .battle-select-footer { gap: 9px; padding: 8px; }
+  .game-app .battle-rule-controls { gap: 10px; }.game-app .battle-rule-controls label { font-size: 9px; }.game-app .battle-next { font-size: 13px; padding-inline: 13px; }
+  .game-app .battle-active-count { font-size: 7px; }.game-app .battle-active-count strong { font-size: 22px; }
+  .game-app .mode-select { padding: 18px 12px 20px; margin-top: 4dvh; border-radius: 16px; }.game-app .mode-choice { padding: 10px 18px 10px 46px; gap: 12px; min-height: 84px; }
+  .game-app .mode-choice { --mode-step: 7px; }
+  .game-app .mode-choice:hover:not(:disabled), .game-app .mode-choice:focus-visible { transform: translateX(5px); }
+  .game-app .mode-symbol { width: 44px; height: 44px; font-size: 16px; }.game-app .mode-arrow { width: 36px; height: 36px; font-size: 13px; }
+  .game-app .mode-choice strong { font-size: clamp(19px, 5.4vw, 24px); }
+  .game-app .mode-choice small { font-size: 9px; }.game-app .mode-arrow { font-size: 13px; }
+  .game-app .melee-stage-grid.battle-stage-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-block: 10px; }.game-app .melee-tile.battle-stage > strong { font-size: 10px; }
+  .game-app .melee-stage-detail { flex-wrap: wrap; gap: 8px; }.game-app .melee-preview { width: 104px; height: 56px; }.game-app .melee-info { flex: 1 1 180px; }
+  .game-app .stage-ready-bar > span { font-size: 20px; }.game-app .stage-ready-bar .battle-next { min-width: 0; }
+}
+@media (max-width: 480px) {
+  .game-app .menu-layer { padding: 13px 10px 18px; }.game-app .battle-select-heading { flex-wrap: wrap; padding-right: 44px; gap: 5px 8px; }
+  .game-app .battle-rule-title { order: 3; flex-basis: 100%; padding: 5px; font-size: 13px; }.game-app .battle-back { margin-left: auto; font-size: 11px; }
+  .game-app .roster-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 5px; }.game-app .roster-portrait { height: 62px; }.game-app .roster-fighter > strong { font-size: 10px; letter-spacing: .1px; }
+  .game-app .roster-assignments .seat-token { min-width: 15px; height: 13px; padding: 1px; font-size: 7px; }
+  .game-app .player-seat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.game-app .player-seat { height: 163px; }
+  .game-app .seat-number { min-width: 33px; }.game-app .seat-kind-label select { font-size: 12px; }
+  .game-app .seat-fighter-name { font-size: 23px; }.game-app .active-seat .seat-fighter-name { font-size: 20px; padding-left: 42px; }
+  .game-app .seat-footer strong { font-size: 9px; }.game-app .seat-footer > span { font-size: 7px; }
+  .game-app .battle-next { min-height: 42px; }.game-app .battle-select-footer #go-stage { flex: 1; }.game-app .battle-rule-controls { flex: 1; }
+  .game-app .battle-active-count { margin-left: 0; }.game-app .battle-rule-controls label { font-size: 8px; }.game-app .battle-rule-controls select { min-height: 32px; }
+  .game-app .melee-stage-grid.battle-stage-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }.game-app .melee-tile .battle-stage-image { height: 84px; }
+  .game-app .melee-stage-detail { gap: 8px; padding: 8px; }.game-app .melee-preview { width: 96px; height: 54px; }.game-app .melee-info strong { font-size: 17px; }.game-app .melee-info span { white-space: normal; }
+  .game-app .stage-ready-bar { flex-wrap: wrap; gap: 10px; padding: 10px; }.game-app .stage-ready-bar > span { font-size: 21px; }.game-app .stage-ready-bar #start-match { flex: 1 1 100%; }
+  .game-app .room-gateway { margin-top: 18px; padding: 14px; }.game-app .room-gateway > p { font-size: 10px; }
+  .game-app .battle-online #active-room-code { font-size: 22px; }
+}
+@media (max-height: 700px) and (min-width: 701px) {
+  .game-app .battle-select-heading { min-height: 55px; padding-block: 5px; margin-bottom: 8px; }.game-app .battle-logo h2 { font-size: 34px; }
+  .game-app .melee-stage-grid.battle-stage-grid { gap: 6px; margin-block: 8px; }.game-app .melee-tile .battle-stage-image { height: clamp(48px, 9dvh, 72px); }
+  .game-app .melee-stage-detail { margin-bottom: 8px; padding: 6px 10px; }.game-app .melee-preview { width: 110px; height: 56px; }
+  .game-app .stage-ready-bar { padding: 8px 12px; }
+  .game-app .roster-portrait { height: 54px; }.game-app .roster-tray { padding-block: 6px; }.game-app .player-seat { height: 112px; }
+  .game-app .seat-selection-hint { margin-block: 4px; min-height: 20px; }.game-app .battle-select-footer { margin-top: 9px; padding-block: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-app *, .game-app *::before, .game-app *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+  .game-app .character-tile:hover:not(:disabled), .game-app .stage-tile:hover:not(:disabled), .game-app .primary:hover:not(:disabled), .game-app .character-tile .fighter-portrait { transform: none !important; }
+}
+
+/* Compact mobile HUD: the fighter cards and stage header shrink so the arena and the
+   touch controls keep the screen. Percent stays >= 28px and the clock >= 24px. */
+@media (max-width: 760px) {
+  .game-app .fighters-hud { width: calc(100% - 16px); gap: 6px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .game-app .fighter-card { min-height: 56px; padding: 6px 9px 5px; gap: 6px; border-bottom-width: 3px; }
+  .game-app .fighter-card:has(.hud-portrait) { padding-left: 46px; }
+  .game-app .hud-portrait { left: -2px; width: 44px; height: 64px; }
+  .game-app .fighter-card > div:first-child { gap: 2px; }
+  .game-app .fighter-card .player-label { font-size: 6px; letter-spacing: .9px; }
+  .game-app .fighter-card strong { font-size: 15px; letter-spacing: -.5px; }
+  .game-app .stock-dots { font-size: 8px; min-height: 9px; letter-spacing: 1.5px; }
+  .game-app .shield-meter, .game-app .charge-meter { width: 44px; height: 4px; }
+  .game-app .combat-state { font-size: 5px; }
+  .game-app .percent { font-size: 30px; letter-spacing: -2px; text-shadow: 1px 2px 0 #000b; }
+  .game-app .hud-slot { font-size: 8px; padding: 2px 6px; }
+  .game-app .hud-center { display: none; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { min-height: 66px; padding: 6px 6px 5px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card strong { font-size: 13px; margin-bottom: 18px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .percent { font-size: 28px; right: 6px; bottom: 8px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .hud-portrait { width: 56px; }
+  .game-app .fighters-hud.many-players .fighter-card { min-height: 62px; height: 62px; padding: 6px 8px 5px; }
+  .game-app .match-top { top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; }
+  .game-app .match-top h1 { font-size: 11px; }
+  .game-app .match-top .eyebrow { margin-bottom: 3px; font-size: 5px; letter-spacing: .6px; }
+  .game-app .in-game-brand { font-size: 11px; }
+  .game-app .clock { font-size: 24px; padding: 4px 14px; }
+  .game-app.scene-arena .match-actions .icon-action { width: 26px; height: 26px; font-size: 13px; }
+  .game-app.scene-arena .play-toolbar.match-actions { right: 50px; gap: 3px; }
+  .game-app.scene-arena .screen-tools .icon-action { width: 26px; height: 26px; }
+  .game-app { --touch-bottom: calc(82px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 480px) {
+  .game-app .fighters-hud { width: calc(100% - 12px); gap: 5px; }
+  .game-app .fighter-card { padding: 5px 7px 4px; min-height: 52px; }
+  .game-app .fighter-card:has(.hud-portrait) { padding-left: 40px; }
+  .game-app .hud-portrait { width: 38px; height: 58px; }
+  .game-app .fighter-card strong { font-size: 14px; }
+  .game-app .percent { font-size: 28px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) { gap: 4px; width: calc(100% - 10px); }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { min-height: 64px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card strong { font-size: 12px; margin-bottom: 16px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .percent { font-size: 28px; bottom: 6px; }
+  .game-app .clock { font-size: 24px; padding: 4px 12px; }
+  .game-app.scene-arena .play-toolbar.match-actions { grid-template-columns: repeat(3, 26px); right: 46px; }
+}
+@media (max-height: 540px) and (min-width: 600px) {
+  .game-app .fighters-hud { bottom: 8px; width: min(720px, calc(100% - 24px)); gap: 8px; }
+  .game-app .fighter-card { min-height: 50px; padding: 5px 10px 4px; }
+  .game-app .fighter-card:has(.hud-portrait) { padding-left: 46px; }
+  .game-app .hud-portrait { width: 44px; height: 58px; }
+  .game-app .fighter-card strong { font-size: 15px; }
+  .game-app .percent { font-size: 30px; }
+  .game-app .clock { font-size: 24px; padding: 3px 14px; }
+  .game-app .match-top { top: 8px; }
+  .game-app .fighters-hud:is(.count-3, .count-4) .fighter-card { min-height: 62px; }
+  .game-app { --touch-bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
+
+/* Boot loading screen: fullscreen overlay with a real completion bar. */
+.game-app .loading-overlay { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; background: radial-gradient(120% 90% at 50% 8%, #16222f 0%, #0b1014 58%, #06090c 100%); }
+.game-app .loading-brand { color: #eaf2ff; font-weight: 800; font-size: 26px; letter-spacing: 3px; font-style: italic; }
+.game-app .loading-brand span { color: #ff4f5e; }
+.game-app .loading-title { margin: 0; color: #92a6c1; font: 10px/1.6 var(--mono); letter-spacing: 4px; }
+.game-app .loading-bar { width: min(430px, 84vw); height: 12px; border: 1px solid #2c3c52; border-radius: 7px; background: #0f1723; overflow: hidden; box-shadow: inset 0 1px 3px #0009; }
+.game-app .loading-fill { display: block; height: 100%; width: 0%; border-radius: 6px; background: linear-gradient(90deg, #2f6db8, #57c2ff 60%, #ffd45c); transition: width 200ms ease-out; }
+.game-app .loading-percent { margin: 0; color: #eaf2ff; font: 700 22px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.game-app .loading-detail { margin: 0; max-width: min(560px, 92vw); min-height: 2.8em; color: #6c809f; font: 8px/1.7 var(--mono); overflow-wrap: anywhere; }
+/* Client-disc mode: the boot overlay asks for the player's own ISO(s). */
+.game-app .disc-gate .disc-slot { display: flex; flex-direction: column; gap: 6px; width: min(430px, 84vw); padding: 10px 12px; border: 1px solid #2c3c52; border-radius: 7px; background: #0f1723; text-align: left; }
+.game-app .disc-gate .disc-slot-name { color: #eaf2ff; font: 700 9px/1.6 var(--mono); letter-spacing: 2px; }
+.game-app .disc-gate .disc-slot-name em { color: #6c809f; font-weight: 400; font-style: normal; letter-spacing: 1px; }
+.game-app .disc-gate input[type="file"] { color: #92a6c1; font: 9px/1.6 var(--mono); max-width: 100%; }
+.game-app .disc-gate-error { margin: 0; max-width: min(560px, 92vw); color: #ff8a94; font: 9px/1.7 var(--mono); overflow-wrap: anywhere; }
+
+/* Minimal HUD: floating damage percents above each fighter (hudMode 'overhead'). */
+.game-app .overhead-percent { position: absolute; z-index: 3; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; padding: 2px 5px 3px; pointer-events: none; color: #fff; border-bottom: 2px solid var(--player-color, #fff); text-shadow: 0 1px 0 #000, 0 0 6px #000c, 0 2px 8px #0009; }
+.game-app .overhead-value { display: flex; align-items: baseline; gap: 1px; font: 800 17px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.game-app .overhead-value span { font-size: 9px; }
+.game-app .overhead-percent[data-damage="high"] { color: #ffd45c; }
+.game-app .overhead-percent[data-damage="danger"] { color: #ff4f5e; }
+.game-app .overhead-stocks { margin-top: 1px; font: 6px/1 var(--mono); letter-spacing: 2px; color: var(--player-color, #9fb2cf); text-shadow: 0 1px 2px #000; }
+
+/* Item Switch (Melee-style item toggle menu) */
+.game-app .items-switch-button { min-height: 29px; padding: 5px 10px; border: 2px ridge #94a6b7; color: #fff; background: #0c1728; font: 850 11px Arial, sans-serif; letter-spacing: .4px; cursor: pointer; }
+.game-app .items-switch-button:hover:not(:disabled) { background: #14243c; }
+.game-app .item-switch-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; background: #050a14d9; }
+.game-app .item-switch { display: flex; flex-direction: column; gap: 12px; width: min(980px, 96vw); max-height: 92dvh; padding: 16px 18px; border: 2px ridge #94a6b7; background: linear-gradient(#101c30, #0a1322); box-shadow: 0 10px 40px #000c; overflow: auto; }
+.game-app .item-switch-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.game-app .item-switch-head h3 { margin: 0; color: #ffe46b; font: italic 950 22px Arial, sans-serif; letter-spacing: .5px; }
+.game-app .item-switch-frequency { display: flex; gap: 4px; flex-wrap: wrap; }
+.game-app .frequency-pill { padding: 6px 10px; border: 2px outset #3d4f66; background: #16233a; color: #b8c6d8; font: 850 10px Arial, sans-serif; letter-spacing: .5px; cursor: pointer; }
+.game-app .frequency-pill.active { border-style: inset; background: linear-gradient(#ffe46b, #eeb72c); color: #15110a; }
+.game-app .item-switch-close { margin-left: auto; min-height: 32px; padding: 6px 14px; border: 2px outset #fff08a; background: linear-gradient(#ffe46b, #eeb72c); color: #15110a; font: italic 950 12px Arial, sans-serif; cursor: pointer; }
+.game-app .item-switch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 7px; }
+.game-app .item-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 4px 6px; border: 2px outset #4b5c73; background: #182742; color: #dfe8f2; font: 800 9px Arial, sans-serif; letter-spacing: .3px; cursor: pointer; min-height: 86px; }
+.game-app .item-tile img { width: 52px; height: 52px; object-fit: contain; image-rendering: auto; filter: drop-shadow(0 2px 3px #0009); }
+.game-app .item-tile-mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 6px; background: #22334f; color: #9fb2cf; font: 950 18px Arial, sans-serif; }
+.game-app .item-tile.on { border-color: #ffe46b; background: linear-gradient(#3d3a1c, #2c2a12); color: #ffe9a0; }
+.game-app .item-tile.off img, .game-app .item-tile.locked img { filter: grayscale(1) brightness(.45); }
+.game-app .item-tile.off { color: #7488a0; }
+.game-app .item-tile.locked { border-style: solid; border-color: #2c3a4e; background: #101a2c; color: #566e82; cursor: not-allowed; }
+.game-app .item-tile.focused { outline: 2px solid #ffd45c; outline-offset: 1px; }
+.game-app .item-tile-badge { position: absolute; top: 4px; right: 4px; padding: 1px 4px; border-radius: 2px; background: #35208a; color: #cfc4ff; font: 900 7px Arial, sans-serif; letter-spacing: .6px; }
+.game-app .item-switch-detail { display: flex; align-items: flex-start; gap: 16px; border-top: 1px solid #2c3a4e; padding-top: 10px; }
+.game-app .item-switch-summary { flex: 1; }
+.game-app .item-switch-summary strong { color: #fff; font: italic 950 17px Arial, sans-serif; margin-right: 10px; }
+.game-app .item-switch-summary .state { font: 900 9px Arial, sans-serif; letter-spacing: .8px; padding: 2px 7px; border-radius: 2px; }
+.game-app .item-switch-summary .state.on { background: #1d4d24; color: #9df0a8; }
+.game-app .item-switch-summary .state.off { background: #4d1d1d; color: #f0a89d; }
+.game-app .item-switch-summary .state.locked { background: #35208a; color: #cfc4ff; }
+.game-app .item-switch-summary p { margin: 6px 0 0; color: #b3c4d7; font: 10px/1.6 var(--mono); }
+.game-app .item-switch-bulk { display: flex; gap: 8px; }
+.game-app .item-switch-bulk .secondary { padding: 7px 12px; border: 2px outset #3d4f66; background: #16233a; color: #cdd9e6; font: 850 10px Arial, sans-serif; cursor: pointer; }
+.game-app .item-switch-scope { margin: 0; color: #788ba5; font: 8px/1.6 var(--mono); }
+.game-app .perf-overlay { position: absolute; top: auto; bottom: max(8px, env(safe-area-inset-bottom)); right: 8px; z-index: 30; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; background: #060a14ee; border: 1px solid #2a3b55; border-radius: 6px; color: #9fd8ff; font: 10px/1.5 var(--mono); text-align: right; pointer-events: none; }
+.game-app .perf-overlay strong { color: #fff; }
+.game-app .load-progress-bar { display: inline-flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.game-app .load-progress-track { display: block; width: 130px; max-width: 100%; height: 6px; border: 1px solid #3d4f66; border-radius: 3px; background: #0b1322; overflow: hidden; }
+.game-app .load-progress-fill { display: block; height: 100%; background: #7fd4ff; transition: width 0.2s linear; }
+.game-app .load-progress-bar small { color: #9dafcb; font: 8px var(--mono); letter-spacing: .5px; }
+
+/* Home (mode select) fits one screen at every size, never scrolls: the card is
+   centred in the height the system bar leaves, the mode banners share that
+   height (each banner sizes its badge and text from its own height through a
+   size container), and short landscape screens put the logo beside them. */
+.game-app.scene-home .menu-layer { display: flex; flex-direction: column; overflow: hidden; padding-top: clamp(6px, 3dvh, 28px); padding-bottom: 0; }
+.game-app.scene-home .mode-select { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; width: 100%; margin: auto; padding: clamp(10px, 3.5dvh, 38px) clamp(14px, 4vw, 44px) clamp(8px, 2.6dvh, 26px); }
+/* Home is one continuous screen: the grid + glow backdrop spans the whole viewport and the mode select sits directly on it (no card, border or shadow). */
+.game-app.scene-home .menu-layer { background: radial-gradient(120% 60% at 85% -10%, #3b6bff2e, transparent 55%), radial-gradient(100% 55% at 8% 110%, #ffcf4022, transparent 55%), repeating-linear-gradient(0deg, transparent 0 23px, #8fb4ff10 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #8fb4ff10 23px 24px), linear-gradient(160deg, #101b31, #070c18); }
+.game-app.scene-home .mode-select { border: 0; border-radius: 0; background: none; box-shadow: none; }
+.game-app.scene-home .mode-game-mark { flex-shrink: 0; align-self: flex-start; font-size: clamp(26px, min(7vw, 8.5dvh), 78px); }
+.game-app.scene-home .mode-select h2 { flex-shrink: 0; margin: clamp(2px, 1dvh, 10px) 0 clamp(8px, 2.6dvh, 26px); padding-bottom: clamp(4px, 1dvh, 10px); font-size: clamp(12px, min(2.6vw, 3.4dvh), 27px); }
+.game-app.scene-home .mode-choices { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+.game-app.scene-home .mode-choice { container-type: size; flex: 0 1 92px; min-height: 34px; padding-block: 0; }
+.game-app.scene-home .mode-choice strong { font-size: clamp(13px, min(3.4vw, 34cqh), 33px); }
+.game-app.scene-home .mode-choice small { margin-top: clamp(1px, 6cqh, 7px); }
+.game-app.scene-home .mode-symbol { width: clamp(22px, 62cqh, 56px); height: clamp(22px, 62cqh, 56px); border-width: 2px; font-size: clamp(9px, 22cqh, 20px); }
+.game-app.scene-home .mode-arrow { width: clamp(20px, 50cqh, 46px); height: clamp(20px, 50cqh, 46px); border-width: 2px; font-size: clamp(9px, 17cqh, 16px); }
+@container (max-height: 60px) { .game-app.scene-home .mode-choice small { display: none; } }
+.game-app.scene-home .mode-prompt { flex-shrink: 0; margin-top: clamp(6px, 2.6dvh, 26px); padding-block: clamp(3px, 1dvh, 10px); font-size: clamp(11px, 2.2dvh, 15px); }
+.game-app.scene-home .mode-research-note { flex-shrink: 0; margin-top: clamp(3px, 1.4dvh, 14px); }
+.game-app.scene-home .system-menu-home { margin-top: clamp(4px, 1.6dvh, 12px); }
+/* Phones / short landscape: one row of compact tiles (icon over a short caption), live dot instead of status text. */
+@media (max-width: 760px), (max-height: 560px) {
+  .game-app.scene-home .system-menu-home { flex-wrap: wrap; gap: 6px; }
+  .game-app.scene-home :is(.system-entry, .system-menu-home .icon-action) { position: relative; flex-direction: column; gap: 1px; min-width: 62px; min-height: 44px; padding: 4px 8px; font-size: 9px; letter-spacing: .3px; }
+  .game-app.scene-home .system-entry .system-glyph, .game-app.scene-home .system-menu-home .icon-action > span[aria-hidden] { font-size: 17px; }
+  .game-app.scene-home .system-entry .system-status { display: none; }
+  .game-app.scene-home .system-entry.is-live::after { content: ''; position: absolute; top: 4px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #5ee08a; box-shadow: 0 0 6px #5ee08a; }
+  .game-app.scene-home .system-menu-home .icon-action { width: auto; height: auto; }
+}
+@media (max-height: 680px) and (min-aspect-ratio: 4/3) {
+  .game-app.scene-home .menu-layer { padding-top: max(6px, env(safe-area-inset-top)); }
+  .game-app.scene-home .mode-select { display: grid; flex: 1 1 0; grid-template: auto auto minmax(0, 1fr) auto / minmax(0, 34fr) minmax(0, 66fr); column-gap: clamp(12px, 3vw, 32px); max-width: 1060px; margin: 0 auto; padding: clamp(8px, 3dvh, 22px) clamp(12px, 3vw, 28px); border-radius: 14px; }
+  .game-app.scene-home .mode-game-mark { grid-area: 1 / 1; font-size: clamp(24px, min(5.4vw, 11dvh), 64px); letter-spacing: -2px; }
+  .game-app.scene-home .mode-select h2 { grid-area: 2 / 1; margin: 6px 0 0; font-size: clamp(11px, min(1.9vw, 4dvh), 22px); letter-spacing: 3px; }
+  .game-app.scene-home .mode-prompt, .game-app.scene-home .mode-prompt-error { grid-area: 3 / 1; align-self: center; max-width: none; margin: 8px 0; }
+  .game-app.scene-home .mode-research-note { grid-area: 4 / 1; margin: 0; text-align: left; font-size: 8px; line-height: 1.5; }
+  .game-app.scene-home .mode-choices { grid-area: 1 / 2 / 5 / 3; justify-content: center; }
+  .game-app.scene-home .mode-choice { flex-basis: 84px; margin-top: -5px; padding-inline: 40px 14px; gap: clamp(8px, 1.6vw, 16px); }
+  .game-app.scene-home .mode-choice:nth-child(2) { margin-left: 10px; }.game-app.scene-home .mode-choice:nth-child(3) { margin-left: 20px; }
+  .game-app.scene-home .mode-choice:nth-child(4) { margin-left: 30px; }.game-app.scene-home .mode-choice:nth-child(5) { margin-left: 40px; }
+  .game-app.scene-home .mode-choice strong { font-size: clamp(13px, min(2.8vw, 34cqh), 30px); }
+}
+@media (max-height: 400px) and (min-aspect-ratio: 4/3) {
+  .game-app.scene-home .mode-research-note { display: none; }
+}

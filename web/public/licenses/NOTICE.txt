@@ -1,0 +1,32 @@
+Smash Web renderer credits
+
+HSD format interpretation and selected algorithms are informed by and adapted from
+noclip.website, copyright (c) 2018 Jasper St. Pierre, under the MIT License.
+Reference revision: 6b16cfda00ef5af3ee2a66d8b928bb0bf700e5b6
+https://github.com/magcius/noclip.website
+Full upstream notice and license: /licenses/noclip.LICENSE
+
+Three.js provides WebGL rendering, math, and OrbitControls under the MIT License.
+https://threejs.org/
+Full license: /licenses/three.LICENSE
+
+React and React DOM provide the interface under the MIT License.
+https://react.dev/
+Full licenses: /licenses/react.LICENSE and /licenses/react-dom.LICENSE
+
+@noble/hashes supplies local SHA-1 and SHA256 checksums for LAN HTTP origins (MIT).
+https://github.com/paulmillr/noble-hashes
+Full license: /licenses/noble-hashes.LICENSE
+
+SSM/DSP and HALPST music interpretation is informed by vgmstream (permissive license).
+https://github.com/vgmstream/vgmstream
+Full notice: /licenses/vgmstream.LICENSE
+
+The original HSD decompilation is also credited for documenting the data/runtime:
+https://github.com/doldecomp/melee
+
+These software notices do not license Nintendo/HAL game assets for redistribution.
+The viewer reads assets from a locally selected user-owned disc or from bounded,
+allowlisted ranges of the server's user-owned ISO. No game assets are bundled in
+the static app. This includes a limited playable prototype, not the complete
+Melee engine, particle renderer, or AX mixer.

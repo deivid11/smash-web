@@ -1,0 +1,10 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1014;
+  --panel: #121a1e;
+  --text: #e9eeeb;
+  --muted: #91a29c;
+  --mint: #99f5ce;
+  --line: #293532;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}

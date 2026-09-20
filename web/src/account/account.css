@@ -1,0 +1,224 @@
+/* Account screens (web/src/account/account-screens.tsx): SIGN IN, PROFILE, FRIENDS,
+ * plus the home ACCOUNT entry, the room invite toast and the LAN friends strip.
+ * Same rules as the home and Rift menus: one viewport, no document scroll —
+ * the body owns the free space, text sizes clamp to the viewport height, and
+ * long lists page instead of scrolling. Tuned from a 891×411 landscape phone up. */
+
+.game-app.account-open .menu-layer {
+  display: flex; flex-direction: column; overflow: hidden; padding: 0;
+  background: radial-gradient(120% 60% at 85% -10%, #3b6bff2e, transparent 55%), radial-gradient(100% 55% at 8% 110%, #ffcf4022, transparent 55%), repeating-linear-gradient(0deg, transparent 0 23px, #8fb4ff10 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #8fb4ff10 23px 24px), linear-gradient(160deg, #101b31, #070c18);
+}
+
+.account-screen {
+  --gold: #ffcf40;
+  flex: 1; min-height: 0; width: 100%; max-width: 1280px; margin: 0 auto; box-sizing: border-box;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(6px, 1.8dvh, 16px);
+  padding: max(clamp(6px, 1.8dvh, 20px), env(safe-area-inset-top)) max(clamp(10px, 2.6vw, 36px), env(safe-area-inset-right)) max(clamp(6px, 1.8dvh, 18px), env(safe-area-inset-bottom)) max(clamp(10px, 2.6vw, 36px), env(safe-area-inset-left));
+  color: #e8edf5; text-align: left;
+  /* Fade only: a translate would briefly overflow and make the layer scrollable. */
+  animation: account-in 0.2s ease both;
+}
+@keyframes account-in { from { opacity: 0; } to { opacity: 1; } }
+.account-screen p { margin: 0; }
+
+/* ——— Header / footer ——— */
+.account-head { display: flex; align-items: center; gap: clamp(8px, 1.4vw, 18px); min-width: 0; }
+.game-app .account-head .battle-back { flex: none; padding: clamp(4px, 1dvh, 8px) 16px clamp(4px, 1dvh, 8px) 10px; font-size: clamp(11px, 2.2dvh, 15px); }
+.account-titles { flex: 1; min-width: 0; }
+.account-eyebrow { font: 700 clamp(8px, 1.8dvh, 12px) var(--mono); letter-spacing: 0.14em; color: #8fa2c0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .account-head h2 { margin: 0; padding: 0; border: 0; background: none; color: #eef2f8; font: italic 950 clamp(16px, 5dvh, 38px) / 1.05 Arial, sans-serif; letter-spacing: 0.02em; text-shadow: 2px 2px 0 #c81e3a, 4px 4px 0 #0009; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-tabs { flex: none; display: flex; gap: 6px; }
+.game-app .account-tab { position: relative; min-height: 0; padding: clamp(4px, 1.1dvh, 9px) clamp(10px, 1.6vw, 18px); border: 2px solid #4a6bff55; border-radius: 3px; background: #0f1a2e; color: #bdc9dd; font: italic 900 clamp(10px, 2.2dvh, 14px) Arial, sans-serif; letter-spacing: 0.06em; cursor: pointer; }
+.game-app .account-tab:hover, .game-app .account-tab:focus-visible { color: #fff; border-color: var(--gold); }
+.game-app .account-tab[aria-pressed="true"] { border-color: var(--gold); background: linear-gradient(180deg, #ffe46b, #e8a91c); color: #15110a; }
+.account-foot { display: flex; align-items: center; justify-content: flex-end; gap: clamp(5px, 0.8vw, 10px); min-width: 0; }
+.game-app .account-foot .secondary { min-height: 0; padding: clamp(5px, 1.3dvh, 10px) clamp(9px, 1.3vw, 16px); font-size: clamp(10px, 2dvh, 12px); white-space: nowrap; }
+.account-foot-note { margin-right: auto; min-width: 0; color: #74e6c6; font-size: clamp(9px, 1.9dvh, 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .account-danger { border-color: #ff6b7a66; color: #ffb3bb; }
+.game-app .account-danger:hover:not(:disabled) { border-color: #ff6b7a; color: #fff; background: #5a1420; }
+
+/* ——— Shared pieces ——— */
+.account-body { position: relative; min-height: 0; min-width: 0; display: grid; }
+.account-panel { box-sizing: border-box; min-height: 0; min-width: 0; overflow: hidden; padding: clamp(7px, 1.8dvh, 16px) clamp(10px, 1.6vw, 18px); border: 2px solid #4a6bff40; border-radius: 12px; background: linear-gradient(160deg, #101b31f2, #070c18f5); box-shadow: 0 0 0 1px #060a14, 0 12px 30px #0008; }
+.game-app .account-panel h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 clamp(4px, 1dvh, 10px); padding: 0 0 clamp(3px, 0.8dvh, 6px); border: 0; border-bottom: 2px solid var(--gold); background: none; color: #cfd8e6; font: italic 900 clamp(11px, 2.4dvh, 16px) Arial, sans-serif; letter-spacing: 0.12em; }
+.account-panel h3 small { color: #8fa2c0; font: 700 clamp(8px, 1.8dvh, 11px) var(--mono); letter-spacing: 0; }
+.account-screen label { display: flex; flex-direction: column; gap: 3px; min-width: 0; color: #9fb0c9; font: 800 clamp(8px, 1.8dvh, 11px) Arial, sans-serif; letter-spacing: 0.1em; }
+.game-app .account-screen input { box-sizing: border-box; width: 100%; min-height: 0; padding: clamp(4px, 1.2dvh, 10px) 10px; border: 2px solid #56688a; border-radius: 3px; background: #0b1326; color: #fff; font: 700 clamp(12px, 2.6dvh, 16px) Arial, sans-serif; letter-spacing: normal; }
+.game-app .account-screen input:focus { border-color: var(--gold); outline: none; }
+.account-form-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; gap: 10px; }
+.account-form-row > .battle-next { justify-self: end; }
+.account-error { min-height: 1.25em; color: #ff9aa5; font: 700 clamp(9px, 2dvh, 12px) Arial, sans-serif; overflow-wrap: anywhere; }
+.game-app .account-screen .battle-next, .game-app .account-toast .battle-next { min-height: 0; padding: clamp(5px, 1.4dvh, 11px) clamp(11px, 1.7vw, 22px); font-size: clamp(11px, 2.4dvh, 15px); white-space: nowrap; }
+.game-app .account-screen .secondary { min-height: 0; }
+.account-empty { color: #8fa2c0; font-size: clamp(9px, 2dvh, 13px); line-height: 1.4; }
+.account-badge { box-sizing: border-box; display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #ff3d52; color: #fff; font: normal 900 11px Arial, sans-serif; letter-spacing: 0; }
+.account-tab .account-badge { position: absolute; top: -8px; right: -8px; }
+.account-avatar { box-sizing: border-box; flex: none; display: inline-grid; place-items: center; overflow: hidden; width: 36px; height: 36px; border: 2px solid #7d8fa3; border-radius: 50%; background: #0b1326; }
+/* Portraits are full-body renders: small avatars zoom to the upper body. */
+.account-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; transform: scale(1.12); transform-origin: 50% 30%; }
+.account-avatar.big img { transform: none; }
+.account-avatar b { color: var(--game-gold, #ffcf40); font: italic 900 16px Arial, sans-serif; }
+.account-unavailable { align-self: center; justify-self: center; max-width: 560px; display: flex; flex-direction: column; gap: 8px; font-size: clamp(12px, 2.6dvh, 16px); color: #bdc9dd; }
+
+/* ——— Sign in ——— */
+.account-signin { width: 100%; max-width: 1100px; margin: 0 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: clamp(10px, 2.4vw, 32px); }
+.account-pitch { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: clamp(6px, 2dvh, 18px); }
+.account-mark { color: #eef2f8; font: italic 1000 clamp(28px, min(6vw, 10dvh), 72px) / 1 Impact, "Arial Narrow", Arial, sans-serif; letter-spacing: -2px; transform: skewX(-6deg); transform-origin: left; text-shadow: 3px 3px 0 #c81e3a, 6px 6px 0 #0009; }
+.account-mark span { color: var(--gold); }
+.account-pitch ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: clamp(4px, 1.4dvh, 12px); }
+.account-pitch li { display: flex; align-items: center; gap: 10px; }
+.account-pitch li > b { flex: none; display: grid; place-items: center; width: clamp(26px, 6dvh, 44px); height: clamp(26px, 6dvh, 44px); border: 2px solid var(--gold); border-radius: 50%; font-size: clamp(13px, 3dvh, 22px); }
+.account-pitch li strong { display: block; color: var(--gold); font: italic 900 clamp(11px, 2.6dvh, 17px) Arial, sans-serif; letter-spacing: 0.04em; }
+.account-pitch li small { display: block; color: #9fb0c9; font-size: clamp(9px, 2dvh, 13px); line-height: 1.3; }
+.account-note { color: #6f82a2; font-size: clamp(8px, 1.8dvh, 11px); }
+.account-form { display: flex; flex-direction: column; gap: clamp(4px, 1.3dvh, 12px); }
+.account-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.game-app .account-segment button { min-height: 0; padding: clamp(5px, 1.2dvh, 9px); border: 2px solid #4a6bff55; border-radius: 3px; background: #0f1a2e; color: #9fb0c9; font: italic 900 clamp(10px, 2.2dvh, 13px) Arial, sans-serif; letter-spacing: 0.05em; cursor: pointer; }
+.game-app .account-segment button[aria-selected="true"] { border-color: var(--gold); background: #1b2740; color: var(--gold); }
+.account-form > .battle-next { align-self: flex-end; }
+.account-form > .account-error { min-height: 1.1em; }
+
+/* ——— Profile ——— */
+.account-profile { align-self: center; height: min(100%, 540px); min-height: 0; display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 2fr); gap: clamp(8px, 1.6vw, 20px); }
+.account-card { box-sizing: border-box; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(4px, 1.4dvh, 12px); padding: 10px; border: 2px solid #ffcf4055; border-radius: 14px; background: radial-gradient(90% 60% at 50% 20%, #3b6bff33, transparent 70%), linear-gradient(180deg, #141f39f5, #080e1df5); text-align: center; }
+.account-avatar.big { width: clamp(56px, min(28dvh, 14vw), 190px); height: clamp(56px, min(28dvh, 14vw), 190px); border-width: 3px; border-color: var(--gold); box-shadow: 0 0 30px #ffcf4033; }
+.account-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.account-card-text strong { color: #fff; font: italic 950 clamp(15px, 4dvh, 30px) / 1.05 Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-card-text small { color: #8fa2c0; font: clamp(9px, 2dvh, 13px) var(--mono); }
+.account-card-text em { color: var(--gold); font: italic 800 clamp(10px, 2.2dvh, 14px) Arial, sans-serif; }
+.account-card-meta { color: #6f82a2; font-size: clamp(8px, 1.7dvh, 11px); }
+.account-overview { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: clamp(6px, 1.6dvh, 14px); }
+.account-stats dl { margin: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.account-stats dl div { display: flex; flex-direction: column; align-items: center; min-width: 0; padding: clamp(3px, 1dvh, 8px) 4px; border-radius: 8px; background: #ffffff08; }
+.account-stats dt { color: #8fa2c0; font-size: clamp(8px, 1.7dvh, 11px); white-space: nowrap; }
+.account-stats dd { margin: 0; color: var(--gold); font: italic 950 clamp(14px, 4dvh, 28px) Arial, sans-serif; }
+.account-cloud { display: flex; flex-direction: column; gap: clamp(4px, 1.2dvh, 10px); }
+.account-cloud > p[role="status"] { color: #74e6c6; font: 800 clamp(11px, 2.4dvh, 15px) Arial, sans-serif; }
+.account-cloud.is-offline > p[role="status"], .account-cloud.is-error > p[role="status"] { color: #ff9aa5; }
+.account-cloud.is-conflict > p[role="status"], .account-cloud.is-syncing > p[role="status"] { color: var(--gold); }
+.account-cloud-lede { color: #9fb0c9; font-size: clamp(9px, 2dvh, 13px); line-height: 1.35; }
+.game-app .account-cloud .secondary { align-self: flex-start; padding: clamp(5px, 1.2dvh, 9px) 14px; }
+.account-conflict { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.account-conflict-side { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: clamp(5px, 1.2dvh, 10px); border: 1px solid #ffcf4044; border-radius: 10px; background: #ffffff06; }
+.account-conflict-side strong { color: var(--gold); font: italic 900 clamp(11px, 2.4dvh, 15px) Arial, sans-serif; }
+.account-conflict-side small { color: #bdc9dd; font-size: clamp(9px, 1.9dvh, 12px); }
+.game-app .account-conflict-side .battle-next { margin-top: auto; align-self: flex-start; }
+.account-editor, .account-small-form { display: flex; flex-direction: column; gap: clamp(4px, 1.3dvh, 12px); }
+.account-small-form { align-self: start; width: 100%; max-width: 680px; }
+.account-small-form > .battle-next, .account-small-form > .secondary { align-self: flex-end; }
+.account-delete > p:not(.account-error) { color: #ffb3bb; font-size: clamp(10px, 2.1dvh, 13px); }
+.account-editor-label { color: #9fb0c9; font: 800 clamp(8px, 1.8dvh, 11px) Arial, sans-serif; letter-spacing: 0.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-editor-label b { color: var(--gold); }
+.account-avatar-grid { flex: 1; min-height: 0; display: grid; align-content: start; gap: 4px; }
+.game-app .account-avatar-choice { box-sizing: border-box; aspect-ratio: 1; min-height: 0; min-width: 0; padding: 0; overflow: hidden; border: 2px solid #34466a; border-radius: 6px; background: #0b1326; color: #9fb0c9; font: italic 900 10px Arial, sans-serif; cursor: pointer; }
+.account-avatar-choice img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.game-app .account-avatar-choice[aria-checked="true"] { border-color: var(--gold); box-shadow: 0 0 10px #ffcf4088; }
+.game-app .account-avatar-choice:hover, .game-app .account-avatar-choice:focus-visible { border-color: #fff; }
+
+/* ——— Friends ——— */
+.account-friends { min-height: 0; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr); gap: clamp(8px, 1.6vw, 20px); }
+.account-friends-side { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: clamp(6px, 1.6dvh, 14px); }
+.account-add { display: flex; flex-direction: column; gap: 4px; }
+.account-add-row { display: flex; gap: 6px; }
+.account-add small { color: #8fa2c0; font-size: clamp(8px, 1.8dvh, 12px); }
+.account-add small b { color: var(--gold); font-family: var(--mono); }
+.account-notice { min-height: 1.2em; color: #74e6c6; font-size: clamp(8px, 1.8dvh, 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-list-panel { display: flex; flex-direction: column; }
+.account-pager { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.game-app .account-pager button { min-height: 0; width: clamp(22px, 5dvh, 30px); height: clamp(22px, 5dvh, 30px); padding: 0; border: 1px solid #7d8fa3; border-radius: 3px; background: #0f1a2e; color: #e8edf5; font-size: 11px; cursor: pointer; }
+.account-pager em { color: #9fb0c9; font: normal 700 clamp(9px, 1.9dvh, 12px) var(--mono); letter-spacing: 0; }
+.account-rows { flex: 1; min-height: 0; overflow: hidden; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: clamp(3px, 0.9dvh, 8px); }
+.account-row { box-sizing: border-box; flex: none; height: clamp(38px, 10.5dvh, 64px); display: flex; align-items: center; gap: clamp(6px, 1vw, 12px); padding: 0 clamp(6px, 1vw, 12px); border: 1px solid #a6baff20; border-radius: 10px; background: #10192acc; }
+.account-row .account-avatar, .account-toast .account-avatar { width: clamp(26px, 7.5dvh, 46px); height: clamp(26px, 7.5dvh, 46px); }
+.account-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.account-row-text strong { display: flex; align-items: center; gap: 6px; min-width: 0; color: #fff; font: italic 900 clamp(11px, 2.5dvh, 16px) Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-row-text strong em { color: var(--gold); font-size: 0.8em; font-weight: 700; }
+.account-row-text small { color: #8fa2c0; font-size: clamp(8px, 1.8dvh, 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-row-actions { flex: none; display: flex; gap: 5px; }
+.game-app .account-row-actions button { min-height: 0; padding: clamp(4px, 1dvh, 8px) clamp(8px, 1.2vw, 14px); font-size: clamp(10px, 2.1dvh, 13px); }
+.account-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #56607a; }
+.account-row.is-online .account-dot { background: #5ee08a; box-shadow: 0 0 6px #5ee08a; }
+.account-row[data-friend]:not(.is-online) { opacity: 0.72; }
+
+/* ——— Home entry ——— */
+.game-app .account-entry { position: relative; }
+.game-app .account-entry .account-avatar.system-glyph { width: 22px; height: 22px; border-width: 1px; }
+.game-app .account-entry .account-badge { position: absolute; top: -7px; right: -7px; }
+.account-entry-name { max-width: 12ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ——— Invite toast ——— */
+.game-app .account-toast { --gold: #ffcf40; position: fixed; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 40; box-sizing: border-box; width: min(560px, calc(100vw - 24px)); display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid var(--gold); border-radius: 12px; background: linear-gradient(180deg, #172234f5, #0b1326f5); box-shadow: 0 10px 30px #000c; text-align: left; transform: translateX(-50%); animation: account-in 0.3s ease both; }
+.game-app .account-toast .secondary { min-height: 0; padding: 6px 12px; }
+
+/* ——— LAN friends strip ——— */
+.game-app .lan-friends { --gold: #ffcf40; box-sizing: border-box; min-width: 0; display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 6px 10px; overflow: hidden; border: 1px solid #a6baff30; border-radius: 10px; background: #10192acc; text-align: left; }
+.lan-friends-label { flex: none; color: var(--gold); font: italic 900 12px Arial, sans-serif; letter-spacing: 0.06em; }
+.lan-friends-empty { flex: 1; min-width: 0; color: #8fa2c0; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lan-friend { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 8px; background: #ffffff08; }
+.lan-friend .account-avatar { width: 26px; height: 26px; }
+.lan-friend-text { min-width: 0; max-width: 150px; display: flex; flex-direction: column; }
+.lan-friend-text strong { color: #fff; font: italic 900 11px Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lan-friend-text small { color: #8fa2c0; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-app .lan-friends .battle-next, .game-app .lan-friends .secondary { flex: none; min-height: 0; padding: 4px 10px; font-size: 11px; }
+.game-app .lan-friends > .secondary:last-child { margin-left: auto; }
+
+/* ——— Short landscape phones ——— */
+@media (max-height: 440px) {
+  .account-pitch li small, .account-note, .account-card-meta, .account-cloud-lede { display: none; }
+  .account-stats dl div { padding-block: 2px; }
+}
+/* ——— Portrait: stack columns ——— */
+@media (max-aspect-ratio: 4/5) {
+  .account-signin { grid-template-columns: minmax(0, 1fr); align-content: center; }
+  .account-pitch ul, .account-note { display: none; }
+  .account-profile { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .account-card { flex-direction: row; justify-content: flex-start; text-align: left; }
+  .account-avatar.big { width: clamp(56px, 16vw, 96px); height: clamp(56px, 16vw, 96px); }
+  .account-stats dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .account-friends { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.2fr); }
+  .account-foot { flex-wrap: wrap; }
+  .account-foot-note { flex-basis: 100%; }
+  .account-head { flex-wrap: wrap; }
+  .account-titles { flex-basis: 40%; }
+}
+
+/* ——— Rift save & quit (corner icon beside the settings icons) ——— */
+.game-app .system-corner:has(.rogue-save-quit) { display: flex; align-items: center; gap: 6px; }
+.game-app .system-corner .rogue-save-quit { border-color: #ffcf40aa; background: #1b2740; }
+/* Save & quit beside the settings cog: widen the space Rift headers keep free for both. */
+.game-app:has(.rogue-save-quit) .rogue-screen { --corner: clamp(104px, 11vw, 124px); }
+
+
+/* ——— Players directory + public profiles ——— */
+.account-players { width: 100%; max-width: 1100px; margin: 0 auto; }
+.game-app .account-screen .account-players-search { width: clamp(120px, 24vw, 260px); margin-left: auto; padding: clamp(3px, 0.8dvh, 6px) 8px; font-size: clamp(10px, 2dvh, 13px); }
+.account-players h3 .account-pager { margin-left: 6px; }
+.account-player { width: 100%; max-width: 1200px; margin: 0 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.35fr); gap: clamp(8px, 1.6vw, 20px); }
+.account-player-side { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: clamp(6px, 1.6dvh, 14px); }
+.account-player-side .account-stats dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.account-player-main { display: flex; flex-direction: column; }
+.account-player-tabs { flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.account-game-result { flex: none; display: grid; place-items: center; width: clamp(22px, 5dvh, 32px); height: clamp(22px, 5dvh, 32px); border-radius: 4px; font: italic 950 clamp(11px, 2.6dvh, 17px) Arial, sans-serif; background: #56607a; color: #fff; }
+.account-game.is-win .account-game-result { background: #2f9e62; }
+.account-game.is-loss .account-game-result { background: #b3404f; }
+.account-player-rift { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: clamp(6px, 1.4dvh, 12px); }
+.account-player-rift dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.account-player-champions { color: #9fb0c9; font-size: clamp(9px, 1.9dvh, 12px); line-height: 1.4; }
+.account-player-fighters { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: clamp(6px, 1.4dvh, 12px); }
+.account-player-modes, .account-player-mains { margin: 0; padding: 0; list-style: none; display: grid; gap: clamp(4px, 1dvh, 8px); }
+.account-player-modes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.account-player-modes li { display: flex; flex-direction: column; align-items: center; padding: 4px; border-radius: 6px; background: #ffffff08; }
+.account-player-modes b { color: var(--gold); font: italic 900 clamp(10px, 2.2dvh, 14px) Arial, sans-serif; }
+.account-player-modes span, .account-player-mains small { color: #8fa2c0; font-size: clamp(8px, 1.7dvh, 11px); }
+.account-player-mains { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.account-player-mains li { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: #ffffff08; }
+.account-player-mains .account-avatar { width: clamp(24px, 6dvh, 38px); height: clamp(24px, 6dvh, 38px); }
+.account-player-mains span { min-width: 0; display: flex; flex-direction: column; }
+.account-player-mains strong { color: #fff; font: italic 900 clamp(10px, 2.2dvh, 14px) Arial, sans-serif; }
+.game-app .account-pitch > #account-browse-players { align-self: flex-start; }
+@media (max-aspect-ratio: 4/5) {
+  .account-player { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .account-player-side { grid-template-rows: auto auto; }
+  .account-player-rift dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .account-player-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

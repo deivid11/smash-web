@@ -1,0 +1,13 @@
+.keyboard-panel { margin: .9rem 0 0; padding: .7rem .9rem; border: 1px solid #2c3c52; border-radius: 8px; background: #0f1723; }
+.keyboard-panel > summary { cursor: pointer; color: #eaf2ff; font: 700 .8rem/1.6 var(--mono, monospace); letter-spacing: 2px; }
+.keyboard-panel .keyboard-panel__hint { margin: .5rem 0 .6rem; color: #b9c5df; font-size: .78rem; }
+.keyboard-panel .keyboard-panel__table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.keyboard-panel .keyboard-panel__table th { padding: .25rem .4rem; text-align: left; color: #b9c5df; font-weight: 400; }
+.keyboard-panel .keyboard-panel__table thead th { color: #7489a6; font: .68rem/1.6 var(--mono, monospace); letter-spacing: 1px; text-transform: uppercase; }
+.keyboard-panel .keyboard-panel__table td { padding: .2rem .4rem; }
+.keyboard-panel .keyboard-panel__key { min-width: 6.5rem; padding: .3rem .6rem; border: 1px solid #3b4d68; border-bottom-width: 3px; border-radius: 6px; background: #18233a; color: #eaf2ff; font: 700 .8rem/1.4 var(--mono, monospace); cursor: pointer; }
+.keyboard-panel .keyboard-panel__key:hover, .keyboard-panel .keyboard-panel__key:focus-visible { border-color: #ffd45c; outline: none; }
+.keyboard-panel .keyboard-panel__key.is-listening { border-color: #ffd45c; background: #3a2f12; color: #ffd45c; }
+.keyboard-panel .keyboard-panel__key.is-unbound { border-color: #ff8a94; color: #ff8a94; }
+.keyboard-panel .keyboard-panel__footer { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-top: .7rem; }
+.keyboard-panel .keyboard-panel__note { flex: 1 1 12rem; margin: 0; min-height: 1.2em; color: #ffd45c; font-size: .78rem; }
