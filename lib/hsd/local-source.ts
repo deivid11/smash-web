@@ -6,8 +6,11 @@
 import { ACE_20, verifyAceDisc, verifyMeleeDisc, type DiscReader } from '../disc.ts';
 import { HsdAssetSession } from './session.ts';
 import { ACE_ASSETS, SERVER_ASSETS, aceDiscPath, type SourceFile, type SourceManifest } from './source-protocol.ts';
+import { MANIFEST_CACHE, MANIFEST_REQUEST, manifestIdentity, rangeCacheKey, saveCachedManifest, type AssetStore } from './asset-fetch.ts';
+import { readExact } from '../disc.ts';
 
-export async function openLocalSource(vanilla: DiscReader, ace?: DiscReader): Promise<{ session: HsdAssetSession; manifest: SourceManifest }> {
+export interface LocalSource { session: HsdAssetSession; manifest: SourceManifest; reader: DiscReader }
+export async function openLocalSource(vanilla: DiscReader, ace?: DiscReader): Promise<LocalSource> {
   const info = await verifyMeleeDisc(vanilla);
   const files: SourceFile[] = SERVER_ASSETS.map((name) => {
     const file = info.files.find((file) => file.path === name);
@@ -38,5 +41,30 @@ export async function openLocalSource(vanilla: DiscReader, ace?: DiscReader): Pr
     version: 1, mode: 'server', gameId: info.gameId, revision: info.revision, title: info.title,
     discSize: reader.size, executableSha1: info.dolSha1, files, ...(modded ? { modded } : {}),
   };
-  return { session: new HsdAssetSession(reader, manifest), manifest };
+  return { session: new HsdAssetSession(reader, manifest), manifest, reader };
+}
+
+/** Keeps a copy of the game files this project uses (a few hundred MB, not the disc image) in
+ * the browser's own storage, so a reload boots from it instead of asking for the disc again.
+ * Every file is stored whole under the same identity-keyed range key the cache-only reader
+ * looks up (server-source.ts cachedDiscReader, with no whole-file size limit). The manifest is
+ * saved LAST: an interrupted copy leaves no manifest, so the next visit simply asks again.
+ * Nothing leaves the device; "Clear downloaded data" in Options removes the copy. */
+export async function saveLocalCopy(source: LocalSource, store: AssetStore, options: { signal?: AbortSignal; onProgress?: (fraction: number) => void; storage?: CacheStorage } = {}): Promise<boolean> {
+  const identity = manifestIdentity(source.manifest), files = source.manifest.files;
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  // An older manifest (an earlier, different or partial copy) must not vouch for this one mid-copy.
+  try { await (await (options.storage ?? (globalThis as { caches?: CacheStorage }).caches)?.open(MANIFEST_CACHE))?.delete(MANIFEST_REQUEST); } catch { /* no Cache Storage: put() below reports it */ }
+  let done = 0;
+  for (const file of files) {
+    if (options.signal?.aborted) return false;
+    if (file.size > 0) await store.put(rangeCacheKey(identity, file.path, 0, file.size - 1), await readExact(source.reader, file.offset, file.size));
+    done += file.size;
+    options.onProgress?.(total ? done / total : 1);
+    // Yield between files: this runs behind the menus and must never starve input or rendering.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  if (options.signal?.aborted) return false;
+  await saveCachedManifest(source.manifest, options.storage);
+  return true;
 }

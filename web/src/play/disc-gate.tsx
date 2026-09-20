@@ -28,7 +28,7 @@ export function DiscGateOverlay({ gate, onStart }: { gate: DiscGate; onStart: (v
       <h2 id="disc-gate-about-title">ABOUT</h2>
       <p>Smash Web is a fan-made browser port of Super Smash Bros. Melee for the Nintendo GameCube: play the original fighters and stages, optional ACE 2.0 mod fighters, online matches and a roguelike mode, right in your browser.</p>
       <p>You must supply a legally obtained copy of the game disc (USA v1.02 ISO) to play.</p>
-      <p>Your ISO and its assets stay on your device. Nothing is uploaded. Online rooms only match players who loaded the same discs.</p>
+      <p>Your ISO and its assets stay on your device. Nothing is uploaded. After the first load, the game files it needs are saved in this browser so you are not asked again (Options → Clear downloaded data forgets them). Online rooms only match players who loaded the same discs.</p>
       <p>The source is open at <a href="https://github.com/deivid11/smash-web" target="_blank" rel="noreferrer">github.com/deivid11/smash-web</a>.</p>
       <p className="disc-gate-fine">Smash Web is not affiliated with, endorsed by, or sponsored by Nintendo or HAL Laboratory. Super Smash Bros., Nintendo GameCube, and all related characters, names, and marks are trademarks of Nintendo and their respective owners.</p>
     </section>

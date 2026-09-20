@@ -1,7 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { connectCachedSource, connectServerSource } from '../../../lib/hsd/server-source.ts';
-import { openLocalSource } from '../../../lib/hsd/local-source.ts';
+import { openLocalSource, saveLocalCopy, type LocalSource } from '../../../lib/hsd/local-source.ts';
 import type { SourceManifest } from '../../../lib/hsd/source-protocol.ts';
 import { localDiscReader } from '../lab/local-disc.ts';
 import type { HsdAssetSession } from '../../../lib/hsd/session.ts';
@@ -59,6 +59,9 @@ function clientDiscPolicy(): ClientAcePolicy | null {
 export interface PlayView {
   /** Client-disc mode only: boot is waiting for the player's own ISO(s). Null otherwise. */
   discGate: DiscGate | null;
+  /** Client-disc mode only: progress (0-1) of saving the game files in this browser so the disc
+   * is not asked for again; 'saved' once done, 'failed' when storage refused. Null otherwise. */
+  discSave: number | 'saved' | 'failed' | null;
   ready: boolean; loading: boolean; error: string; progress: string; progressFraction: number; audioError: string; visualWarning?: string;
   /** Presentation only: full fighter cards, or minimal overhead damage percents. */
   hudMode: 'cards' | 'overhead';
@@ -250,7 +253,7 @@ const initialSetup = (): BattleSetup => ({ seats: defaultSeats(), stage: 'battle
 
 /** One disposable simulation/render runtime. Draft seats are separate from live state. */
 export class GameSession {
-  readonly ui = new Store<PlayView>({ discGate: null, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I and the second uses arrows / Enter / N M comma Right Shift period; both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
+  readonly ui = new Store<PlayView>({ discGate: null, discSave: null, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I and the second uses arrows / Enter / N M comma Right Shift period; both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
   readonly hud = new Store<HudView>({ frame: 0, clock: '3:00', status: 'LOADING', mode: 'SOLO / LOCAL', stage: 'battlefield', phase: 'ready', countdown: 0, winner: '', winnerSlot: null, banner: '', onettWarning: false, rouletteIn: null, fighters: [], shieldMax: 60, hill: null });
   readonly fallLog = new Store<FallLogView>({ entries: [] });
   /** Presentation taps for confirmed local match events (Rift Descent HUD popups).
@@ -372,6 +375,25 @@ export class GameSession {
   /** The disc gate's answer: the original ISO and, where the policy allows it, the ACE 2.0 one. */
   provideDiscs(vanilla: File, ace: File | null): void { this.discOffer?.({ vanilla, ace }); }
   /** Holds boot until the player supplies discs that verify; a rejected disc re-opens the gate. */
+  private localSource: LocalSource | null = null;
+  /** After a boot from the player's own discs: keep the game files in this browser (behind the
+   * menus, one file at a time) so later visits and reloads start without the disc screen. */
+  private saveDiscsForNextVisit(): void {
+    const source = this.localSource, store = cacheStorageStore();
+    this.localSource = null;
+    if (!source || this.disposed) return;
+    if (!store) { this.ui.update({ discSave: 'failed' }); return; }
+    this.ui.update({ discSave: 0 });
+    void (async () => {
+      try {
+        // Best effort: ask the browser not to evict the copy under storage pressure.
+        await globalThis.navigator?.storage?.persist?.().catch(() => false);
+        let shown = 0;
+        const saved = await saveLocalCopy(source, store, { signal: this.abort.signal, onProgress: (fraction) => { if (!this.disposed && fraction - shown >= 0.01) { shown = fraction; this.ui.update({ discSave: Math.min(0.99, fraction) }); } } });
+        if (!this.disposed) this.ui.update({ discSave: saved ? 'saved' : null });
+      } catch { if (!this.disposed) this.ui.update({ discSave: 'failed' }); }
+    })();
+  }
   private async awaitLocalDiscs(ace: ClientAcePolicy): Promise<Awaited<ReturnType<typeof openLocalSource>>> {
     let error = '';
     for (;;) {
@@ -385,6 +407,7 @@ export class GameSession {
       try {
         if (ace === 'required' && !discs.ace) throw new Error('This host requires the ACE 2.0 disc as well as the original one.');
         const source = await openLocalSource(localDiscReader(discs.vanilla, this.abort.signal), ace !== 'off' && discs.ace ? localDiscReader(discs.ace, this.abort.signal) : undefined);
+        this.localSource = source;
         this.ui.update({ discGate: null, progress: `Reading your own disc (${source.manifest.title}${source.manifest.modded ? ' + ACE 2.0' : ''}). Nothing is uploaded.`, progressFraction: 0.02 });
         return source;
       } catch (failure) {
@@ -423,7 +446,7 @@ export class GameSession {
       // Players who downloaded the game data while this host still served it keep playing from
       // that data: the disc gate only opens when nothing usable is stored (or on ?disc, which
       // lets such a player switch to their own ISO for the fighters they never downloaded).
-      const storedFirst = clientAce && !new URLSearchParams(location.search).has('disc') ? await connectCachedSource().catch(() => null) : null;
+      const storedFirst = clientAce && !new URLSearchParams(location.search).has('disc') ? await connectCachedSource({ wholeFileLimit: Number.POSITIVE_INFINITY }).catch(() => null) : null;
       let fromStored = !!storedFirst;
       let connected = storedFirst ?? (clientAce ? await this.awaitLocalDiscs(clientAce) : await connectServerSource(fetcher, this.abort.signal).catch((error: unknown) => { onlineError = error; return null; }));
       if (fromStored) this.ui.update({ progress: `Playing from previously downloaded data (${connected!.manifest.title}).`, progressFraction: 0.02 });
@@ -548,6 +571,7 @@ export class GameSession {
       this.reset(); this.renderer.prepare();
       this.ui.update({ ready: true, loading: false, progress: 'Original assets ready. Choose Solo / Local or LAN.', progressFraction: 1 });
       document.body.dataset.gameReady = 'true';
+      this.saveDiscsForNextVisit();
       window.smashMatchSnapshot = () => this.match ? { ...this.match.snapshot(), paused: this.ui.getSnapshot().paused, stage: this.match.content.stageId, stageFloors: this.match.content.stage.floors.length } : null;
       // ?itemDebug: summon a Poké Ball Pokémon by It_PKind slot into the running local match.
       if (new URLSearchParams(location.search).has('itemDebug')) window.smashSummonPokemon = (slot, x = 0, owner = this.match?.options.player ?? 0) => {

@@ -98,12 +98,12 @@ export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, op
 
 /** Offline boot from the persisted manifest + downloaded ranges. Returns null when
  * nothing was ever downloaded (first visit must be online). Never touches network. */
-export async function connectCachedSource(): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
+export async function connectCachedSource(options: { wholeFileLimit?: number } = {}): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
   const store = cacheStorageStore();
   if (!store) return null;
   const manifest = await loadCachedManifest();
   if (!manifest) return null;
-  return { session: new HsdAssetSession(cachedDiscReader(manifest, store), manifest), manifest };
+  return { session: new HsdAssetSession(cachedDiscReader(manifest, store, options), manifest), manifest };
 }
 
 /** Options for the source handshake. The manifest fetch is the one request boot

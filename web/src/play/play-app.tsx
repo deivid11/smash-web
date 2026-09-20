@@ -310,6 +310,7 @@ function PlayApp({ session, online }: { session: GameSession; online: OnlineSess
       {arenaView && <PartyOverlay runtime={partyRuntime} />}
       {(view.audioError || view.visualWarning || fullscreenError || (arenaView && view.error)) && <p className="game-warning" role="status">{view.error || fullscreenError || view.visualWarning || `Original audio unavailable: ${view.audioError}`}</p>}
       {view.loading && !view.error && !view.discGate && <LoadingOverlay progress={view.progress} fraction={view.progressFraction} />}
+      {view.discSave !== null && view.scene !== 'arena' && <p id="disc-save" className={`disc-save${view.discSave === 'saved' ? ' is-done' : view.discSave === 'failed' ? ' is-failed' : ''}`} role="status">{view.discSave === 'saved' ? 'Game data saved in this browser · you will not be asked for the disc again' : view.discSave === 'failed' ? 'Could not save the game data in this browser · the disc will be asked for again next time' : `Saving game data in this browser for next time… ${Math.round(view.discSave * 100)}% · keep this tab open`}</p>}
       {view.discGate && !view.error && <DiscGateOverlay gate={view.discGate} onStart={(vanilla, ace) => session.provideDiscs(vanilla, ace)} />}
     </div></main>
     <PartyDialog runtime={partyRuntime} account={accountState} portraits={view.portraits} open={partyOpen} activity={partyActivity} onClose={() => { setPartyOpen(false); session.cue('back'); if (arenaView) session.focus(); }} onSignIn={openAccount} watchFriends={() => account.watchFriends()} />

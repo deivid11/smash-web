@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { createMeleeServer } from '../../server/http.ts';
 import { openIsoSource } from '../../server/iso-source.ts';
-import { openLocalSource } from '../../lib/hsd/local-source.ts';
+import { openLocalSource, saveLocalCopy } from '../../lib/hsd/local-source.ts';
+import { cachedDiscReader } from '../../lib/hsd/server-source.ts';
+import { HsdAssetSession } from '../../lib/hsd/session.ts';
 import { openDisc } from '../../scripts/node-disc.ts';
 
 let server: Server, base: string, directory: string;
@@ -61,6 +63,29 @@ describe.skipIf(!iso)('local source parity with the server manifest', () => {
       expect((await local.session.bytes('PlZx.dat')).byteLength).toBeGreaterThan(0);
     } finally { await disc.close(); await ace.close(); await served.close(); }
   }, 120000);
+  it('saves a complete local copy that the cache-only reader boots from, manifest last', async () => {
+    const disc = await openDisc(iso!);
+    try {
+      const local = await openLocalSource(disc);
+      const memory = new Map<string, Uint8Array>(), saved: string[] = [];
+      const store = { get: async (key: string) => memory.get(key), put: async (key: string, bytes: Uint8Array) => { memory.set(key, bytes); } };
+      const storage = { open: async () => ({ put: async () => { saved.push(`manifest after ${memory.size} files`); }, delete: async () => { saved.push('old manifest dropped'); return true; }, match: async () => undefined }) } as unknown as CacheStorage;
+      // Interrupted copy: nothing vouches for it.
+      const abort = new AbortController(); let calls = 0;
+      expect(await saveLocalCopy(local, store, { storage, signal: abort.signal, onProgress: () => { if (++calls === 5) abort.abort(); } })).toBe(false);
+      expect(saved).toEqual(['old manifest dropped']);
+      // Full copy: every exposed file stored whole, manifest written last.
+      let last = 0;
+      expect(await saveLocalCopy(local, store, { storage, onProgress: (fraction) => { expect(fraction).toBeGreaterThanOrEqual(last); last = fraction; } })).toBe(true);
+      expect(last).toBe(1); expect(memory.size).toBe(local.manifest.files.length);
+      expect(saved.at(-1)).toBe(`manifest after ${local.manifest.files.length} files`);
+      // The cache-only reader (no whole-file size limit) serves big and small files byte-identically.
+      const cached = new HsdAssetSession(cachedDiscReader(local.manifest, store, { wholeFileLimit: Number.POSITIVE_INFINITY }), local.manifest);
+      const biggest = [...local.manifest.files].sort((a, b) => b.size - a.size)[0]!;
+      expect(biggest.size).toBeGreaterThan(4 * 1024 * 1024);
+      for (const name of ['PlCo.dat', biggest.path]) expect(Buffer.from(await cached.bytes(name)).equals(Buffer.from(await local.session.bytes(name)))).toBe(true);
+    } finally { await disc.close(); }
+  }, 240000);
   it.skipIf(!aceIso)('refuses the ACE disc in the original slot and the original in the ACE slot', async () => {
     const disc = await openDisc(iso!), ace = await openDisc(aceIso!);
     try {
