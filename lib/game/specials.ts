@@ -146,7 +146,7 @@ export interface SpecialWorld {
   springs: ReadonlyArray<{ x: number; y: number }>; jumpPressed: boolean; shieldPressed: boolean;
   /** The floor segment a grounded fighter stands on (surface normal and pass-through checks). */
   floor?: { a: readonly [number, number]; b: readonly [number, number]; oneWay: boolean };
-  /** Joint positions of every fighter (Black Sonic's homing aims at the rival's part-4 joint). */
+  /** Joint positions of every fighter (Sonic BM's homing aims at the rival's part-4 joint). */
   poses?: import('./match.ts').PoseProvider;
   /** ftCommonData x34: stick·facing at or below it turns (ftCo_800C97A8). */
   turnStick?: number;
@@ -269,7 +269,7 @@ export function beginSpecial(f: MatchFighter, direction: SpecialDirection, input
   if(p.kind==='Dk'&&direction==='down'&&air)return;
   // SpecialAirSStart_Enter (PlKx): one glide per airtime (ft_var9, cleared by OnLanding).
   if(p.kind==='Kx'&&direction==='side'&&air&&f.glideUsed)return;
-  // Black Sonic's exports return untouched while their ft_var50/49/51 latch is set.
+  // Sonic BM's exports return untouched while their ft_var50/49/51 latch is set.
   if(p.kind==='Sc'&&!bsonicSpecialAllowed(f,direction))return;
   // Skull Kid's SpecialN only resets the facing while no bomb is ready or detonatable.
   if(p.kind==='Sd'&&!skullkidSpecialAllowed(f,direction))return;

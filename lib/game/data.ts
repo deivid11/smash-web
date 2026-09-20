@@ -31,7 +31,7 @@ export const ORIGINAL_FIGHTERS: Readonly<Record<OriginalFighterKind, { name: str
   Td: { name: 'Toad', nativeKind: -1 }, Mk: { name: 'Meta Knight', nativeKind: -1 }, Sn: { name: 'Sonic', nativeKind: -1 }, Rc: { name: 'Raichu', nativeKind: -1 }, Lz: { name: 'Charizard', nativeKind: -1 },
   Wf: { name: 'Wolf', nativeKind: -1 }, Dd: { name: 'Diddy Kong', nativeKind: -1 }, De: { name: 'King Dedede', nativeKind: -1 }, Wr: { name: 'Wario', nativeKind: -1 }, Sh: { name: 'Shadow', nativeKind: -1 },
   Bl: { name: 'Blastoise', nativeKind: -1 }, Lc: { name: 'Lucas', nativeKind: -1 }, Nm: { name: 'Metal Sonic', nativeKind: -1 }, Nt: { name: 'Ninten', nativeKind: -1 }, Da: { name: 'Daisy', nativeKind: -1 },
-  Fy: { name: 'Fay', nativeKind: -1 }, Sc: { name: 'Black Sonic', nativeKind: -1 }, Dl: { name: 'Dr. Luigi', nativeKind: -1 }, Kx: { name: 'Knuckles', nativeKind: -1 }, Lu: { name: 'Lucina', nativeKind: -1 },
+  Fy: { name: 'Fay', nativeKind: -1 }, Sc: { name: 'Sonic BM', nativeKind: -1 }, Dl: { name: 'Dr. Luigi', nativeKind: -1 }, Kx: { name: 'Knuckles', nativeKind: -1 }, Lu: { name: 'Lucina', nativeKind: -1 },
   Lc2: { name: 'Lucas TDX', nativeKind: -1 }, Sm: { name: 'Shadow Mewtwo', nativeKind: -1 }, Lb: { name: 'Luigi & Boo', nativeKind: -1 }, MM: { name: 'Metal Mario', nativeKind: -1 }, Sd: { name: 'Skull Kid', nativeKind: -1 },
   Cn: { name: 'Chun-Li', nativeKind: -1 },
   // Giga Bowser rides Bowser's part table (verified: 76 model joints each,

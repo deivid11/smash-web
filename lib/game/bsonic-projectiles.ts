@@ -5,7 +5,7 @@ import { BSONIC_CODE, type BSonicSpringData } from './bsonic-data.ts';
 import { bsonicSpringTouch } from './bsonic.ts';
 import { floorY } from './data.ts';
 
-/** Black Sonic's spring (PlSc itFunction item 0). `phase` is the item state: 'idle' is state 0
+/** Sonic BM's spring (PlSc itFunction item 0). `phase` is the item state: 'idle' is state 0
  * (a grounded spawn: falls onto the floor and waits to be stomped), 'fall' is state 1 (an
  * airborne spawn dropping with its hitbox), 'rebound' is state 1 after its floor bounce
  * (xDB0 = 1: popped up, collision off, dropping through the stage). The item's own velocity
@@ -22,7 +22,7 @@ const FOOT_HALF_WIDTH = 3;
 
 export function bsonicSpringData(owner: MatchFighter): BSonicSpringData {
   const spring = owner.content.specials.articles.bsonic?.spring;
-  if (!spring) throw new Error(`${owner.content.profile.name} has no Black Sonic spring.`);
+  if (!spring) throw new Error(`${owner.content.profile.name} has no Sonic BM spring.`);
   return spring;
 }
 /** M347_Anim → ptr_03678+8: spawned at the owner's position in state_var1's state (0 grounded

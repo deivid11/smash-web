@@ -29,8 +29,9 @@ android/build/
 android/app/build/
 android/captures/
 
-# Private deployment helper; never publish operator infrastructure details.
+# Private operator helpers; never publish infrastructure details or report access.
 /deploy.sh
+/usage.sh
 
 # Local workflow instructions and machine/editor state are not publication inputs.
 AGENTS.md

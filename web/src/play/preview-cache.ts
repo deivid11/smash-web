@@ -10,7 +10,7 @@ export interface PreviewCacheData {
 }
 
 /** Bump when the capture framing/rendering changes, invalidating old entries. */
-export const PREVIEW_CACHE_VERSION = 6;
+export const PREVIEW_CACHE_VERSION = 7;
 const CACHE_NAME = 'smash-web-previews-v1';
 
 export function previewCacheKey(discFingerprint: string): string {

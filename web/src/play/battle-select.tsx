@@ -49,7 +49,7 @@ const BUILTIN_FIGHTERS = [
   { id: 41, kind: 'Nt', name: 'Ninten', mark: 'NT', color: 'coral', subtitle: 'Hypnosis · Slingshot · Thunder Rocket · Magnet', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
   { id: 42, kind: 'Da', name: 'Daisy', mark: 'D', color: 'pink', subtitle: 'Toad · Daisy Bomber · Parasol · Turnips · Float', provenance: 'ACE 2.0 mod fighter · Peach kit on her own attributes; prototype orchestration' },
   { id: 43, kind: 'Fy', name: 'Fay', mark: 'FY', color: 'mint', subtitle: 'Blaster · Sniper · Fire Fay · Reflector', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
-  { id: 44, kind: 'Sc', name: 'Black Sonic', mark: 'BS', color: 'water', subtitle: 'Homing Attack · BM Dash · Spring Jump · BM Charge', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
+  { id: 44, kind: 'Sc', name: 'Sonic BM', mark: 'BM', color: 'water', subtitle: 'Homing Attack · BM Dash · Spring Jump · BM Charge', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
   { id: 45, kind: 'Dl', name: 'Dr. Luigi', mark: 'DL', color: 'mint', subtitle: 'Fireball · Green Missile · Super Jump Punch · Cyclone', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
   { id: 46, kind: 'Kx', name: 'Knuckles', mark: 'KX', color: 'coral', subtitle: 'Homing Attack · Spin Dash · Rising Punch · Drill Charge', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },
   { id: 47, kind: 'Lu', name: 'Lucina', mark: 'LU', color: 'mint', subtitle: 'Shield Breaker · Dancing Blade · Dolphin Slash · Counter', provenance: 'ACE 2.0 mod fighter · prototype special orchestration' },

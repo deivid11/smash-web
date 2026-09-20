@@ -12,7 +12,7 @@ Public source availability does not grant redistribution rights: no upstream cod
 
 ## ACE 2.0 (Akaneia-fork m-ex build)
 
-The modded-fighter reference data (Zero, Toad, Meta Knight, Sonic, Raichu, Charizard, Wolf, Diddy Kong, King Dedede, Wario, Shadow, Blastoise, Lucas, Metal Sonic, Ninten, Daisy, Fay, Black Sonic, Dr. Luigi, Knuckles, Lucina, Lucas TDX, Shadow Mewtwo, Luigi & Boo, Metal Mario, Skull Kid, Chun-Li, Giga Bowser, Tails, Blood Falcon, Wolf SSBU: parameters, bone tables, and action keys in `docs/characters/`) was read from the ACE 2.0 extension build, an Akaneia-fork m-ex project.
+The modded-fighter reference data (Zero, Toad, Meta Knight, Sonic, Raichu, Charizard, Wolf, Diddy Kong, King Dedede, Wario, Shadow, Blastoise, Lucas, Metal Sonic, Ninten, Daisy, Fay, Sonic BM, Dr. Luigi, Knuckles, Lucina, Lucas TDX, Shadow Mewtwo, Luigi & Boo, Metal Mario, Skull Kid, Chun-Li, Giga Bowser, Tails, Blood Falcon, Wolf SSBU: parameters, bone tables, and action keys in `docs/characters/`) was read from the ACE 2.0 extension build, an Akaneia-fork m-ex project.
 
 - Authorship: the ACE 2.0 build is the work of Chri222k and the ACE contributors; it builds on Team Akaneia's Akaneia build and on the m-ex framework. All modded characters, animations and move designs are credited to them; this project claims no authorship of that content.
 - Repository: https://github.com/Chri222k/ACE-BUILD-PUBLIC- (mexproj reference commit `7a5c107cf1`, per `docs/characters/ACE_FIGHTERS.md`)

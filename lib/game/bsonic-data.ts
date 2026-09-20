@@ -2,7 +2,7 @@ import type { HsdArchive } from '../hsd/archive.ts';
 import type { FighterContent } from './load.ts';
 import { articleModel, itemHit, type ArticleData, type SpecialAssets } from './special-data.ts';
 
-/** Black Sonic / Sonic BM (ACE 2.0 m-ex fighter, PlSc, mexproj 043). The ftFunction block ships
+/** Sonic BM (ACE 2.0 m-ex fighter, PlSc, mexproj 043). The ftFunction block ships
  * without debug symbols; every value below was read out of its compiled PowerPC code
  * (motion n = move_logic entry n - 341; disassembly retained only in private research storage).
  * Only the down special reads `special_attributes` (ftDataBSonic+4); everything else the
@@ -76,7 +76,7 @@ export const BSONIC_CODE = {
     lifetime: 175,
     /** ptr_03bf4: another fighter leaves in JumpF/JumpB with self_vel.y += x29d0. */
     otherBounce: 4.5,
-    /** ptr_03bf4+0x180: Black Sonic's air Spin Dash re-enters SpecialAirLwLoop with self_vel.y += x29c4. */
+    /** ptr_03bf4+0x180: Sonic BM's air Spin Dash re-enters SpecialAirLwLoop with self_vel.y += x29c4. */
     rollBounce: 4,
   },
   /** Code-played sound effects (ft_800881D8). */
@@ -101,7 +101,7 @@ export function parseBSonicParameters(arc: HsdArchive): BSonicSpecialData {
   const d = p.down;
   if (d.maxLevel < 1 || d.maxLevel > 20 || !(d.rollSpeed > 0 && d.rollSpeed < 20) || !(d.rollSpeedPerLevel >= 0 && d.rollSpeedPerLevel < 5)
     || d.damage < 0 || d.damage > 100 || d.damagePerLevel < 0 || d.damagePerLevel > 50)
-    throw new Error('Unsupported original Black Sonic special parameters.');
+    throw new Error('Unsupported original Sonic BM special parameters.');
   return p;
 }
 
@@ -116,10 +116,10 @@ export interface BSonicArticles { spring: BSonicSpringData }
 export function parseBSonicArticles(arc: HsdArchive): SpecialAssets['articles'] {
   const table = arc.pointer(arc.symbol('ftDataBSonic') + 0x48);
   const article = arc.pointer(table), common = arc.pointer(article), states = arc.pointer(article + 12);
-  if (!common || !states) throw new Error('Black Sonic spring article is incomplete.');
-  const c = (o: number) => { const v = arc.f32(common + o); if (!Number.isFinite(v) || Math.abs(v) > 1000) throw new Error('Invalid Black Sonic spring attribute.'); return v; };
+  if (!common || !states) throw new Error('Sonic BM spring article is incomplete.');
+  const c = (o: number) => { const v = arc.f32(common + o); if (!Number.isFinite(v) || Math.abs(v) > 1000) throw new Error('Invalid Sonic BM spring attribute.'); return v; };
   const script = arc.pointer(states + 0x10 + 12), airHit = script ? itemHit(arc, script) : null;
-  if (!airHit) throw new Error('The Black Sonic air spring carries no original hit.');
+  if (!airHit) throw new Error('The Sonic BM air spring carries no original hit.');
   const top = c(0x20), bottom = c(0x24), halfWidth = Math.max(Math.abs(c(0x28)), Math.abs(c(0x2c)));
   const spring: BSonicSpringData = {
     model: articleModel(arc, article, 'bsonic-spring', states), hit: airHit, speed: 0, angle: 0, lifetime: BSONIC_CODE.spring.lifetime,
@@ -127,7 +127,7 @@ export function parseBSonicArticles(arc: HsdArchive): SpecialAssets['articles'] 
     top: Math.fround(top - bottom), halfWidth, airHit,
   };
   if (!(spring.gravity > 0) || !(spring.terminal > 0) || !(spring.top > 0 && spring.top < 50) || !(halfWidth > 0 && halfWidth < 50) || !(spring.bounce >= 0 && spring.bounce <= 1))
-    throw new Error('Unsupported Black Sonic spring bounds.');
+    throw new Error('Unsupported Sonic BM spring bounds.');
   return { bsonic: { spring } };
 }
 

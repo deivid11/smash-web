@@ -11,7 +11,7 @@ export function DiscGateOverlay({ gate, onStart }: { gate: DiscGate; onStart: (v
   const pick = (set: (file: File | null) => void) => (event: React.ChangeEvent<HTMLInputElement>) => set(event.target.files?.[0] ?? null);
   return <div className="loading-overlay disc-gate" role="dialog" aria-modal="true" aria-labelledby="disc-gate-title">
     <span className="loading-brand" aria-hidden="true">SMASH<span>WEB</span></span>
-    <p className="loading-title" id="disc-gate-title">SELECT YOUR OWN GAME DISC</p>
+    <p className="loading-title" id="disc-gate-title">SELECT YOUR LEGAL COPY OF THE GAME</p>
     <label className="disc-slot">
       <span className="disc-slot-name">ORIGINAL · USA v1.02 <em>required</em></span>
       <input id="disc-vanilla" type="file" accept=".iso,.gcm" disabled={gate.verifying} onChange={pick(setVanilla)} />
@@ -24,6 +24,13 @@ export function DiscGateOverlay({ gate, onStart }: { gate: DiscGate; onStart: (v
       {gate.verifying ? 'VERIFYING…' : ace && gate.ace !== 'off' ? 'PLAY ORIGINAL + ACE' : 'PLAY ORIGINAL'}
     </button>
     {gate.error && <p className="disc-gate-error" role="alert">{gate.error}</p>}
-    <p className="loading-detail">This host does not supply game data. Your disc is verified and read inside this browser; nothing is uploaded. Online rooms only match players who loaded the same discs.</p>
+    <section className="disc-gate-about" aria-labelledby="disc-gate-about-title">
+      <h2 id="disc-gate-about-title">ABOUT</h2>
+      <p>Smash Web is a fan-made browser port of Super Smash Bros. Melee for the Nintendo GameCube: play the original fighters and stages, optional ACE 2.0 mod fighters, online matches and a roguelike mode, right in your browser.</p>
+      <p>You must supply a legally obtained copy of the game disc (USA v1.02 ISO) to play.</p>
+      <p>Your ISO and its assets stay on your device. Nothing is uploaded. Online rooms only match players who loaded the same discs.</p>
+      <p>The source is open at <a href="https://github.com/deivid11/smash-web" target="_blank" rel="noreferrer">github.com/deivid11/smash-web</a>.</p>
+      <p className="disc-gate-fine">Smash Web is not affiliated with, endorsed by, or sponsored by Nintendo or HAL Laboratory. Super Smash Bros., Nintendo GameCube, and all related characters, names, and marks are trademarks of Nintendo and their respective owners.</p>
+    </section>
   </div>;
 }

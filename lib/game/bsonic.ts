@@ -4,7 +4,7 @@ import { BSONIC_CODE, ITEM_STEP_RISE, LANDING_SPEED, type BSonicSpecialData } fr
 import type { SpecialDirection } from './special-data.ts';
 import { beginSpecial, command, rootDelta, selectSpecial, type SpecialRuntime, type SpecialStep, type SpecialWorld } from './specials.ts';
 
-/** Black Sonic's native motion states (PlSc `move_logic`, motions 343-369; the Air variants are
+/** Sonic BM's native motion states (PlSc `move_logic`, motions 343-369; the Air variants are
  * their own motions). The ftFunction code has no symbols, so each branch cites the callback it
  * ports (M<motion>_<Anim|IASA|Phys|Coll>, sub_/ptr_ offsets into the block). */
 export type BSonicState =
@@ -36,7 +36,7 @@ export interface BSonicRuntime {
   /** Collision bookkeeping the original reads from coll_data. */
   wasGrounded: boolean; lastVy: number; jumps: number;
 }
-/** Black Sonic's fighter vars: ft_var50/49/51 are the once-per-airtime neutral/side/up latches
+/** Sonic BM's fighter vars: ft_var50/49/51 are the once-per-airtime neutral/side/up latches
  * (cleared by OnLanding, by damage/ledge/capture states and on respawn); ft_var43 marks his
  * grounded spring alive (a grounded SpecialHi clears it, and those springs vanish). */
 export interface BSonicFighterVars { neutralUsed: boolean; sideUsed: boolean; upUsed: boolean; spring: boolean }
@@ -44,7 +44,7 @@ export const createBSonicVars = (): BSonicFighterVars => ({ neutralUsed: false, 
 
 const f32 = Math.fround;
 const params = (f: MatchFighter): BSonicSpecialData => {
-  const p = f.content.specials.parameters; if (p.kind !== 'Sc') throw new Error('Missing Black Sonic parameters.'); return p;
+  const p = f.content.specials.parameters; if (p.kind !== 'Sc') throw new Error('Missing Sonic BM parameters.'); return p;
 };
 const ANIMATION: Record<BSonicState, (r: BSonicRuntime) => string> = {
   NStart: (r) => r.air ? 'SpecialAirNStart' : 'SpecialNStart', N: () => 'SpecialN', NLanding: () => 'SpecialNLanding',
@@ -565,7 +565,7 @@ export function bsonicHitDamage(f: MatchFighter): number | null {
   return null;
 }
 
-/** ptr_03bf4 for a Black Sonic landing on any Black Sonic spring. The air Spin Dash bounces into
+/** ptr_03bf4 for a Sonic BM landing on any Sonic BM spring. The air Spin Dash bounces into
  * a fresh SpecialAirLwLoop (self_vel.y += x29c4, 60 frames, spring sound); anything else
  * relaunches SpecialHi (motion 0x15B) with ft_var51/49 set, every jump spent and no new spring.
  * Returns the sound it plays. The relaunch's rise starts at the item-step blend's x6D0. */

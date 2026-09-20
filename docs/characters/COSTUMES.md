@@ -74,7 +74,7 @@ allowlisted in `ACE_COSTUME_ASSETS`).
 | Ninten (6) | Default, Red, Blue, Green, Purple, Aqua |
 | Daisy (9) | Default, Red, Blue, Green, White, Black, Lavender, Pink, Tan |
 | Fay (4) | Default, Red, Blue, Green |
-| Black Sonic (6) | Default, Red, Green, White, Black, We |
+| Sonic BM (6) | Default, Red, Green, White, Black, We |
 | Dr. Luigi (6) | Default, Green, Yellow, Black, Pink, Aqua |
 | Knuckles (11) | Default, Green, Yellow, White, Black, Blue, Cyan, Og, Pr, Tk, Wr |
 | Lucina (7) | Default, Red, Green, Yellow, White, Black, Ms |

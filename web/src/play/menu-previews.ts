@@ -148,6 +148,10 @@ function capturePortrait(renderer: PlayRenderer, scene: Scene, selected: GameCon
   const graphics = renderer.renderer;
   {
     renderer.setFighters(selected);
+    // setFighters may also swap the stage (the live menu backdrop is often another stage), and
+    // setStage resets the clear colour to that stage's opaque one: without this the capture
+    // comes out as a tiny fighter in a solid black tile, because the alpha mask frames nothing.
+    graphics.setClearColor(0x000000, 0);
     const match = new LocalMatch(selected, renderer.rigs);
     const fighter = match.fighters[0]; fighter.x = 0; fighter.y = 0; fighter.animationFrame = 8;
     // Game & Watch is a flat plane that reads edge-on from the generic side; the

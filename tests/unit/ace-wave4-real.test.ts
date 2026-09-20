@@ -57,7 +57,7 @@ describe.skipIf(!iso || !aceIso)('ACE wave-4 integration', () => {
   }, 120000);
   afterEach(() => rig?.dispose());
 
-  it('starts Black Sonic and Knuckles on their own spawn-time part visibility', () => {
+  it('starts Sonic BM and Knuckles on their own spawn-time part visibility', () => {
     // sc-full.asm 0x104-0x190: ftParts_80074A4C hides groups 1, 2, 4, 5, 7, 8 and 9 before any script.
     make('Sc'); rig.sample(f());
     const hidden = rig.actors[0]!.hiddenDobjs;
@@ -108,11 +108,11 @@ describe.skipIf(!iso || !aceIso)('ACE wave-4 integration', () => {
     for (let i = 0; i < 30; i++) step({ special: true });
     expect(other().percent).toBeGreaterThan(0);
   });
-  it('Black Sonic runs his decoded PlSc code: homing attack, dash, spring jump, spin dash', () => {
+  it('Sonic BM runs his decoded PlSc code: homing attack, dash, spring jump, spin dash', () => {
     make('Sc', 20);
     // ftDataBSonic special_attributes: only the Spin Dash reads them (level cap, speed, damage).
     const p = f().content.specials.parameters;
-    if (p.kind !== 'Sc') throw new Error('Black Sonic parameters missing.');
+    if (p.kind !== 'Sc') throw new Error('Sonic BM parameters missing.');
     expect(p.down).toEqual({ maxLevel: 5, rollSpeed: Math.fround(1.9), rollSpeedPerLevel: Math.fround(0.3), damage: 8, damagePerLevel: 2 });
     const spring = f().content.specials.articles.bsonic!.spring;
     expect([spring.gravity, spring.terminal, spring.bounce]).toEqual([Math.fround(0.036), Math.fround(1.65), Math.fround(0.85)]);

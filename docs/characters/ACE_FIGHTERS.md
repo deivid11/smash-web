@@ -419,7 +419,7 @@ Distinctive announcer, costumes, Rope Snake tether, guided Thunder ball, freeze/
 status, glide. Verification:
 [tests/unit/ace-wave3-real.test.ts](../../tests/unit/ace-wave3-real.test.ts) (8 cases).
 
-## Fifth batch (wave 4): Fay (Fy), Black Sonic (Sc), Dr. Luigi (Dl), Knuckles (Kx), Lucina (Lu)
+## Fifth batch (wave 4): Fay (Fy), Sonic BM (Sc), Dr. Luigi (Dl), Knuckles (Kx), Lucina (Lu)
 
 From the same ACE 2.0 ISO (mexproj `7a5c107`: 041=Fay, 043=Sonic BM, 047=Dr. Luigi,
 050=Knuckles, 053=Lucina): `ftDataFay`, `ftDataBSonic`, `ftDataDrLuigi`, `ftDataKx`,
@@ -428,7 +428,7 @@ From the same ACE 2.0 ISO (mexproj `7a5c107`: 041=Fay, 043=Sonic BM, 047=Dr. Lui
 | | Code | ftData | Joints/Parts | Selector |
 | --- | --- | --- | --- | --- |
 | Fay | `Fy` | `ftDataFay` | 73/73 (Fox family) | 43 |
-| Black Sonic | `Sc` | `ftDataBSonic` | 68/68 (parts 7/9/11/13/19/50 shared) | 44 |
+| Sonic BM | `Sc` | `ftDataBSonic` | 68/68 (parts 7/9/11/13/19/50 shared) | 44 |
 | Dr. Luigi | `Dl` | `ftDataDrLuigi` | 61/61 (Luigi family) | 45 |
 | Knuckles | `Kx` | `ftDataKx` | 71/71 (Sonic layout; base without the `_ACTION_` wrapper) | 46 |
 | Lucina | `Lu` | `ftDataLucina` (Mars layout) | 90/90 (Marth family) | 47 |
@@ -457,7 +457,7 @@ Tables in [lib/game/modded-bones.ts](../../lib/game/modded-bones.ts),
   Hi = Fire Fay (Hold→engine-driven rise→helpless). Lw = Reflector (Fox-down
   convention with its own reflector; `reflector()`/`canShineJump` already cover `Fy`).
   NSniper/AirNSniper unmapped (trigger pending).
-- **Black Sonic** ([lib/game/bsonic-data.ts](../../lib/game/bsonic-data.ts),
+- **Sonic BM** — named as on the ACE disc (`MxDt.dat` lists him as "Sonic BM", a Brawl-Minus-style Sonic; internal name `BSonic`, sound bank `bmsonic`). He is a second, **blue** Sonic by design; this project briefly mislabelled him as a black Sonic. His black look is only the fifth costume, `PlScBk.dat`. ([lib/game/bsonic-data.ts](../../lib/game/bsonic-data.ts),
   [lib/game/bsonic.ts](../../lib/game/bsonic.ts),
   [lib/game/bsonic-projectiles.ts](../../lib/game/bsonic-projectiles.ts)): ported from the
   compiled code of PlSc (`ftFunction` without symbols, motions 343-369; disassembly
@@ -466,7 +466,7 @@ Tables in [lib/game/modded-bones.ts](../../lib/game/modded-bones.ts),
   into `SpecialNEnd` and falls normally, a miss ends in `NEndSpecialFall`). S = dash at 2.6465
   (on flag2 it continues into Run only with the stick forward; otherwise, `SpecialSCancel`; in the air
   the Start floats and he flies straight). Hi = Spring Jump (flag1 launches at 3.75; flag24 leaves the
-  spring: article 0, on the ground it is stepped on to bounce —others JumpF +4.5, Black Sonic relaunches
+  spring: article 0, on the ground it is stepped on to bounce —others JumpF +4.5, Sonic BM relaunches
   `SpecialHi`—, in the air it falls with its 6% hit and bounces through the stage). Lw = Spin
   Dash (B after the Hold's flag1 raises the level up to 5; releasing down rolls at 1.9+0.3·level with
   damage 8+2·level, 60 frames, turn, jump into the air). Locks ft_var49/50/51 per airtime.
@@ -572,9 +572,9 @@ announcer; no alternate costumes.
 Verification: [tests/unit/ace-wave7-real.test.ts](../../tests/unit/ace-wave7-real.test.ts)
 (6 cases).
 
-## Specials ported from the original code (Sonic, Knuckles, Shadow, Charizard, Black Sonic, Metal Sonic)
+## Specials ported from the original code (Sonic, Knuckles, Shadow, Charizard, Sonic BM, Metal Sonic)
 
-Black Sonic and Metal Sonic have their entries in their batches (above). Two findings from those
+Sonic BM and Metal Sonic have their entries in their batches (above). Two findings from those
 ports that affect any clone:
 
 - **Metal Sonic runs on Fox's code.** `MxDt.dat` gives it Fox's `ftFx_*` entries

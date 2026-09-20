@@ -110,7 +110,7 @@ export interface MatchFighter {
   sonicCharge: number;
   /** Knuckles ft_var9: the airtime's one glide is spent (cleared by his OnLanding). */
   glideUsed: boolean;
-  /** Black Sonic ft_var50/49/51 once-per-airtime special latches and ft_var43 (his spring is out). */
+  /** Sonic BM ft_var50/49/51 once-per-airtime special latches and ft_var43 (his spring is out). */
   bsonic: BSonicFighterVars;
   /** Skull Kid's bomb ammo/cooldown/live bomb, float and aerial-special latches (lib/game/sd.ts). */
   skullkid: SkullKidFighterVars;

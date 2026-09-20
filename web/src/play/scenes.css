@@ -1083,6 +1083,13 @@
 .game-app .disc-gate .disc-slot-name { color: #eaf2ff; font: 700 9px/1.6 var(--mono); letter-spacing: 2px; }
 .game-app .disc-gate .disc-slot-name em { color: #6c809f; font-weight: 400; font-style: normal; letter-spacing: 1px; }
 .game-app .disc-gate input[type="file"] { color: #92a6c1; font: 9px/1.6 var(--mono); max-width: 100%; }
+.game-app .disc-gate { justify-content: flex-start; overflow-y: auto; padding-block: max(24px, 6dvh); }
+.game-app .disc-gate-about { width: min(560px, 92vw); margin-top: 6px; padding: 12px 14px; border: 1px solid #2c3c52; border-radius: 7px; background: #0f172399; text-align: left; }
+.game-app .disc-gate-about h2 { margin: 0 0 6px; color: #92a6c1; font: 10px/1.6 var(--mono); letter-spacing: 4px; }
+.game-app .disc-gate-about p { margin: 0 0 7px; color: #b9c5df; font: 11px/1.6 Arial, sans-serif; }
+.game-app .disc-gate-about p:last-child { margin-bottom: 0; }
+.game-app .disc-gate-about a { color: #57c2ff; }
+.game-app .disc-gate-about .disc-gate-fine { color: #6c809f; font-size: 9.5px; }
 .game-app .disc-gate-error { margin: 0; max-width: min(560px, 92vw); color: #ff8a94; font: 9px/1.7 var(--mono); overflow-wrap: anywhere; }
 
 /* Minimal HUD: floating damage percents above each fighter (hudMode 'overhead'). */
