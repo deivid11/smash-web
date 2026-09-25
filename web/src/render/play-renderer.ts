@@ -17,7 +17,7 @@ const GREENS_BLOCK_ROOT = 6;
 const GREENS_MODEL_X = [-85, -75, -65, 65, 75, 85] as const;
 const GREENS_MODEL_Y = [-15, -5, 5, 15, 25] as const;
 const GREENS_TREE_ROOT = 5;
-import type { StageGameplayData } from '../../../lib/game/data.ts';
+import { STAGE_CAMERA_DEFAULT, type StageGameplayData } from '../../../lib/game/data.ts';
 import { activeHits } from '../../../lib/game/moves.ts';
 import { ModelInstance } from './model-instance.ts';
 import { GameRigs } from './game-rig.ts';
@@ -31,7 +31,9 @@ import { hurtEnabled } from '../../../lib/game/specials.ts';
 import { inhaledVictimHidden } from '../../../lib/game/kirby.ts';
 import type { CustomEffects } from '../../../lib/custom/types.ts';
 import { disposeCustomVisuals, type CustomVisuals } from './custom-visuals.ts';
-import { crowdCameraFrame, classicCameraLimits, focusCameraFrame, settleFrameTarget, settleFrameDistance, CROWD_CAMERA_LIFT, type FramingPoint, type FramingInsets } from './camera-framing.ts';
+import { crowdCameraFrame, classicCameraLimits, clampToCameraBounds, confineCameraTarget, focusCameraFrame, settleFrameTarget, settleFrameDistance, CROWD_CAMERA_LIFT, type FramingPoint, type FramingInsets } from './camera-framing.ts';
+import { Magnifier, type MagnifyEntry } from './magnifier.ts';
+import { magnifyBackground, magnifyHalfExtent } from './magnify.ts';
 import { PauseCamera } from './pause-camera.ts';
 import { isTopBlastKO } from '../../../lib/game/ko-effect.ts';
 import { starKoPose, starKoDone, STAR_KO } from './star-ko.ts';
@@ -137,6 +139,9 @@ function sparkGeometry(): THREE.BufferGeometry {
   }
   return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
 }
+/** Lupe ring/arrow for CPU seats: gm_80160968 gives CPUs the grey slot colour (0x666666),
+ * lifted like the seat palette so it reads on the same HUD. */
+const MAGNIFY_CPU_COLOR = 0xadadad;
 export class PlayRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 20_000);
@@ -193,6 +198,10 @@ export class PlayRenderer {
   private hillMarkers: { ring: THREE.Mesh; disc: THREE.Mesh; column: THREE.Mesh; bars: THREE.Mesh[] }[] = [];
   private hillMarkersWidth = -1;
   private frame = 0;
+  /** Original off-screen magnifier (ifMagnify); drawn over the composed frame. */
+  private readonly magnifier = new Magnifier();
+  private readonly magnifyBone = new THREE.Vector3();
+  private readonly magnifyProjected = new THREE.Vector3();
   private stadiumCaptureFrame:number|null=null;
   private stadiumCaptureRevision:number|undefined;
   private stadiumCaptures=0;
@@ -672,8 +681,8 @@ export class PlayRenderer {
     return counts;
   }
   /** Read-only presentation diagnostics; not part of the authoritative snapshot. */
-  presentationSnapshot(): { stadiumCaptures:number; koBeams: number; koParticles: number; koWarnings: readonly string[]; shake: { x: number; y: number }; shakeLevel: CameraShakeLevel; camMode: 'focus' | 'crowd' | 'classic' | 'none'; camFocus: number | null; camFallback: boolean; camDetail: string; camDistance: number; shadows: boolean; richLight: boolean; effects: readonly VisualEffectId[] } {
-    return { stadiumCaptures:this.stadiumCaptures, koBeams: this.effects.stats.koBeams, koParticles: this.effects.stats.koParticles, koWarnings: this.effects.koWarnings, shake: this.shake.sample(), shakeLevel: this.shake.getLevel(), camMode: this.camMode, camFocus: this.camFocus, camFallback: !this.camPrimary, camDetail: this.camDetail, camDistance: Math.round(this.camera.position.z), shadows: this.shadowsEnabled && this.shadowCasters > 0, richLight: this.richLightEnabled, effects: this.visualEffects };
+  presentationSnapshot(): { stadiumCaptures:number; koBeams: number; koParticles: number; koWarnings: readonly string[]; shake: { x: number; y: number }; shakeLevel: CameraShakeLevel; camMode: 'focus' | 'crowd' | 'classic' | 'none'; camFocus: number | null; camFallback: boolean; camDetail: string; camDistance: number; shadows: boolean; richLight: boolean; effects: readonly VisualEffectId[]; magnified: readonly number[] } {
+    return { stadiumCaptures:this.stadiumCaptures, koBeams: this.effects.stats.koBeams, koParticles: this.effects.stats.koParticles, koWarnings: this.effects.koWarnings, shake: this.shake.sample(), shakeLevel: this.shake.getLevel(), camMode: this.camMode, camFocus: this.camFocus, camFallback: !this.camPrimary, camDetail: this.camDetail, camDistance: Math.round(this.camera.position.z), shadows: this.shadowsEnabled && this.shadowCasters > 0, richLight: this.richLightEnabled, effects: this.visualEffects, magnified: this.magnifier.shown };
   }
   reset(): void { this.stadiumCaptureFrame=null;this.stadiumCaptures=0;this.crowdPoints = null; for (const ring of this.respawnRings) ring.visible = false; this.shadowCasters = 0; for (const marker of this.hillMarkers) { marker.ring.visible = false; marker.disc.visible = false; marker.column.visible = false; for (const bar of marker.bars) bar.visible = false; } this.hillMarkersWidth = -1; for (const spark of this.sparks) this.releaseSpark(spark); this.sparks = []; for (const slot of [...this.starKOs.keys()]) this.finishStarKO(slot); for (const twinkle of this.starTwinkles) this.releaseSpark({ mesh: twinkle.mesh, remaining: 0, total: 1 }); this.starTwinkles = []; this.frame = 0; this.presentationTime = null; this.shake.reset(); this.effects.reset(); this.defense.reset(); this.customEffects.forEach(effect => effect.reset()); this.interpStates.clear(); this.interpRevision = undefined; }
   /** Pool size bounds the live LineSegments; excess events reuse the oldest. */
@@ -981,7 +990,10 @@ export class PlayRenderer {
     profiler.end(SPAN_OVERLAYS);
     profiler.begin(SPAN_CAMERA);
     const alive = match.fighters.filter((fighter) => fighter.state !== 'ko');
-    const aliveInterp = alive.map((fighter) => ({ slot: fighter.slot, x: interpPositions.get(fighter.slot)?.x ?? fighter.x, y: interpPositions.get(fighter.slot)?.y ?? fighter.y }));
+    // Camera_8002958C: a fighter past the stage camera range pulls the shot only to its edge,
+    // so launched fighters leave the frame (and get the magnifier) like the original.
+    const cameraBounds = match.content.stage.camera ?? STAGE_CAMERA_DEFAULT;
+    const aliveInterp = alive.map((fighter) => ({ slot: fighter.slot, ...clampToCameraBounds({ x: interpPositions.get(fighter.slot)?.x ?? fighter.x, y: interpPositions.get(fighter.slot)?.y ?? fighter.y }, cameraBounds) }));
     // Every living fighter stays framed so a launched player never loses
     // themselves; KO beams stay world-locked, so a kill no longer flips the
     // 1v1 shot into a snapped crowd zoom. Branch selection below still uses
@@ -1026,8 +1038,11 @@ export class PlayRenderer {
       // pull the camera away from the midpoint, which would crop an edge fighter.
       const halfHeight = Math.max(...framed.map((f) => Math.max(Math.abs(f.y - cy), Math.abs(f.x - cx) / this.camera.aspect))) + 22;
       const distance = THREE.MathUtils.clamp(halfHeight / Math.tan(THREE.MathUtils.degToRad(21)), 95, limits.maxDistance);
-      this.desired.set(cx, cy, 0); this.target.lerp(this.desired, 0.12);
-      this.desired.set(cx, cy + 32, distance); this.camera.position.lerp(this.desired, 0.12); this.camera.lookAt(this.target);
+      // Camera_8002A768: never show past the stage camera range (a climbing Star KO is the
+      // one exception: it must stay in the sky shot).
+      const shot = this.starFramePoints.length ? { x: cx, y: cy } : confineCameraTarget({ x: cx, y: cy }, distance, 32, this.camera.fov, this.camera.aspect, cameraBounds);
+      this.desired.set(shot.x, shot.y, 0); this.target.lerp(this.desired, 0.12);
+      this.desired.set(shot.x, shot.y + 32, distance); this.camera.position.lerp(this.desired, 0.12); this.camera.lookAt(this.target);
     }
     else { this.camMode = 'none'; this.camFocus = null; this.camPrimary = true; this.camDetail = ''; }
     }
@@ -1076,8 +1091,39 @@ export class PlayRenderer {
     profiler.begin(SPAN_DRAW);
     const restoreProjection = this.shake.apply(this.camera, this.container.clientWidth, this.container.clientHeight,
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+    const magnified = paused ? [] : this.magnifyEntries(match);
     try { this.post.render(this.scene, this.camera); }
     finally { restoreProjection(); profiler.end(SPAN_DRAW); this.gpuTimer?.end(); }
+    this.magnifier.render(this.renderer, magnified, this.container.clientWidth, this.container.clientHeight, magnified.length ? this.crowdInsets() : undefined);
+  }
+  /** ifMagnify_802FBBDC: fighters whose camera bone projects outside the screen (live,
+   * visible ones only — ftLib_80086ED0), with their lens framing and background. */
+  private magnifyEntries(match: LocalMatch): MagnifyEntry[] {
+    if (match.phase !== 'playing' && match.phase !== 'countdown') return [];
+    const entries: MagnifyEntry[] = [], stage = match.content.stage;
+    const bounds = stage.camera ?? STAGE_CAMERA_DEFAULT, width = this.container.clientWidth, height = this.container.clientHeight;
+    this.camera.updateMatrixWorld();
+    for (const fighter of match.fighters) {
+      if (fighter.state === 'ko' || fighter.state === 'respawn' || inhaledVictimHidden(fighter, match.fighters) || this.starKOs.has(fighter.slot)) continue;
+      // The 5–8 player focus shot leaves distant rivals out on purpose: only the followed
+      // fighter gets a lupe there (the original never had more than four fighters).
+      if (this.camMode === 'focus' && fighter.slot !== this.camFocus) continue;
+      const actor = this.rigs.actors[fighter.slot];
+      if (!actor) continue;
+      const profile = fighter.content.profile, box = profile.cameraBox;
+      const [bx, by, bz] = box ? this.rigs.point(fighter, box.joint, box.offset) : [fighter.x, fighter.y + 10, 0];
+      const bone = this.magnifyBone.set(bx, by, bz), screen = this.magnifyProjected.copy(bone).project(this.camera);
+      if (screen.z < 1 && Math.abs(screen.x) <= 1 && Math.abs(screen.y) <= 1) continue;
+      entries.push({
+        slot: fighter.slot, object: actor.group, bone: bone.clone(),
+        screen: { x: (screen.x + 1) * width / 2, y: (1 - screen.y) * height / 2 },
+        halfExtent: magnifyHalfExtent(box?.magnify ?? 11, profile.attributes.modelScale),
+        background: magnifyBackground(bx, by, bounds, stage.magnifyColors ?? []),
+        // gm_80160968: CPU seats use the grey slot colour; humans keep their seat colour.
+        color: match.controllerKinds[fighter.slot] === 'cpu' ? MAGNIFY_CPU_COLOR : playerPresentation(fighter.seatId ?? fighter.slot).color,
+      });
+    }
+    return entries;
   }
   labelPosition(x: number, y: number): { x: number; y: number; visible: boolean } {
     const point = new THREE.Vector3(x, y + 20, 0).project(this.camera);
@@ -1203,7 +1249,7 @@ export class PlayRenderer {
     for (const marker of this.hillMarkers) this.disposeHillMarker(marker);
     this.hillMarkers = []; this.hillMarkersWidth = -1;
     this.debugGroup.clear(); this.debugGeometry.dispose(); this.debugMaterials.forEach((material) => material.dispose());
-    this.post.dispose();
+    this.post.dispose(); this.magnifier.dispose();
     disposeCustomVisuals(this.customVisuals);this.renderer.dispose(); this.renderer.domElement.remove();
   }
 }

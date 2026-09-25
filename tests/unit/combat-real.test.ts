@@ -16,7 +16,7 @@ describe.skipIf(!iso)('original-data defense, grabs and ledges',()=>{
  const step=(a:Partial<PlayerInput>={},b:Partial<PlayerInput>={})=>game.step([{...neutralInput(),...a},{...neutralInput(),...b}]);
  const ticks=(n:number,a:Partial<PlayerInput>={},b:Partial<PlayerInput>={})=>{for(let i=0;i<n;i++)step(a,b);};
  const catchVictim=(slot=0)=>{const inputs=[{},{}];inputs[slot]={grab:true};step(inputs[0],inputs[1]);for(let i=0;i<15&&game.fighters[slot]!.state!=='holding';i++)step();expect(game.fighters[slot]!.state).toBe('holding');};
- const ledge=(side=0)=>{const l=content.stage.ledges[side]!,f=game.fighters[0];f.x=l.x-l.facing*4;f.y=l.y-10;f.velocity={x:0,y:-0.5};f.grounded=false;f.floor=null;f.state='fall';f.animation='Fall';return l;};
+ const ledge=(side=0)=>{const l=content.stage.ledges[side]!,f=game.fighters[0];f.x=l.x-l.facing*4;f.y=l.y-10;f.velocity={x:0,y:-0.5};f.grounded=false;f.floor=null;f.state='fall';f.animation='Fall';f.facing=l.facing;return l;};
  const hang=()=>{const l=ledge();step();expect(game.fighters[0].animation).toBe('CliffCatch');ticks(12);expect(game.fighters[0].animation).toBe('CliffWait');return l;};
  beforeAll(async()=>{const disc=await openDisc(iso!);try{content=await loadGameContent(new HsdAssetSession(disc,await verifyMeleeDisc(disc)),new Uint8Array(await readFile(new URL('../../web/public/wasm/melee-gameplay.wasm',import.meta.url))).buffer);}finally{await disc.close();}});
  beforeEach(()=>make());afterEach(()=>rig?.dispose());
@@ -128,7 +128,7 @@ describe.skipIf(!iso)('original-data defense, grabs and ledges',()=>{
   step({down:true});expect(a.combat.ledge).toBeNull();expect(a.combat.cooldown).toBeGreaterThan(0);step();expect(a.combat.ledge).toBeNull();
  });
  it.each(['climb','attack','roll','jump'])('completes a ledge %s option and releases the ledge',(option)=>{
-  hang();const f=game.fighters[0];step(option==='climb'?{y:1}:option==='attack'?{attack:true}:option==='roll'?{shield:true}:{jump:true});expect(f.state).toBe('ledge-action');
+  hang();const f=game.fighters[0];step(option==='climb'?{x:f.facing}:option==='attack'?{attack:true}:option==='roll'?{shield:true}:{jump:true});expect(f.state).toBe('ledge-action');
   let hit=false;for(let n=0;n<120;n++){step();hit ||=game.events.some(e=>e.type==='hit');if(f.combat.ledge===null&&f.state!=='ledge-jump')break;}
   expect(f.combat.ledge).toBeNull();expect(['idle','fall','landing','jump']).toContain(f.state);void hit;
  });
@@ -140,7 +140,7 @@ describe.skipIf(!iso)('original-data defense, grabs and ledges',()=>{
   catchVictim();game.fighters[0].combat.shield=4;game.fighters[0].combat.cooldown=30;make();
   expect(game.fighters.every(f=>f.combat.partner===null&&f.combat.shield===60&&f.combat.cooldown===0&&f.state==='idle')).toBe(true);
  });
- it('uses slower original ledge options at 100 percent',()=>{hang();game.fighters[0].percent=100;step({y:1});expect(game.fighters[0].animation).toBe('CliffClimbSlow');});
+ it('uses slower original ledge options at 100 percent',()=>{hang();game.fighters[0].percent=100;step({x:game.fighters[0].facing});expect(game.fighters[0].animation).toBe('CliffClimbSlow');});
  it('seals an ice-hit victim in a block they mash out of, then pops them loose',()=>{
   const ice=content.combat.ice,v=game.fighters[1];
   game.combat.freeze(v,9,{x:0,y:0});

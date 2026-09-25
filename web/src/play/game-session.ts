@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { connectCachedSource, connectServerSource, storedCopyGaps } from '../../../lib/hsd/server-source.ts';
+import { chooseLook, loadLookPreference, ORIGINAL_LOOK, saveLookPreference } from './look-setting.ts';
 import { openLocalSource, saveLocalCopy, type LocalSource } from '../../../lib/hsd/local-source.ts';
 import type { SourceManifest } from '../../../lib/hsd/source-protocol.ts';
 import { localDiscReader } from '../lab/local-disc.ts';
@@ -26,6 +27,7 @@ import { hasNativeBridge } from '../android-bridge.ts';
 import { PlayRumble } from '../play-rumble.ts';
 import { GRAPHICS_QUALITIES, loadGraphicsQuality, saveGraphicsQuality, loadGraphicsMode, saveGraphicsMode, stepDownQuality, qualityIndex, shouldAutoStepDown, shouldAutoStepUp, isTvClassDevice, capPixelRatioFor1080, chooseInitialQuality, type GraphicsQuality, type GraphicsMode } from '../render/graphics-quality.ts';
 import { loadVisualEffectChoices, saveVisualEffectChoices, withVisualEffect, type VisualEffectChoices, type VisualEffectChoice, type VisualEffectId } from '../render/visual-effects.ts';
+import { loadTextureUpscale, saveTextureUpscale, setTextureUpscale, type TextureUpscale } from '../render/texture-upscale.ts';
 import { cacheStorageStore, cachingFetcher, coalescingFetcher, offlineWholeFileFetcher, WHOLE_FILE_LIMIT } from '../../../lib/hsd/asset-fetch.ts';
 import { prepareCustomVisuals, disposeCustomVisuals } from '../render/custom-visuals.ts';
 import { PlayInput } from '../play-input.ts';
@@ -82,6 +84,13 @@ export interface PlayView {
    * color grade, sharpening, vignette). `auto` follows the effective preset;
    * an explicit on/off is pinned and persisted. Cosmetic only. */
   effects: VisualEffectChoices;
+  /** Cosmetic CPU upscale of fighter/stage textures (1 = original); see render/texture-upscale.ts. */
+  textureUpscale: TextureUpscale;
+  /** Cosmetic looks this host serves (lib/hsd/looks.ts), the stored choice ('original' or a look id)
+   * and the look this session actually loaded; a different choice applies on the next load. */
+  looks: readonly { id: string; name: string }[];
+  look: string;
+  activeLook: string;
   /** Cosmetic camera-shake intensity (options menu, persisted): off disables
    * all quake lens shifts, reduced keeps KO + strong hits, full is historical. */
   cameraShake: CameraShakeLevel;
@@ -255,7 +264,7 @@ const initialSetup = (): BattleSetup => ({ seats: defaultSeats(), stage: 'battle
 
 /** One disposable simulation/render runtime. Draft seats are separate from live state. */
 export class GameSession {
-  readonly ui = new Store<PlayView>({ discGate: null, discSave: null, discGaps: 0, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I (T taunts) and the second uses arrows / Enter / N M comma Right Shift period (B taunts); both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
+  readonly ui = new Store<PlayView>({ discGate: null, discSave: null, discGaps: 0, ready: false, loading: true, error: '', progress: 'Connecting to the game source…', progressFraction: 0, hudMode: loadHudMode(), audioError: '', visualWarning: '', mode: null, scene: 'home', setup: initialSetup(), activeSeat: 0, active: false, paused: false, ended: false, walk: false, sound: loadEnabled('smash-sound', true), music: loadEnabled('smash-music', true), masterVolume: loadMasterVolume(), musicVolume: loadMusicVolume(), debug: false, debugCollision: false, touch: loadTouch(), roulette: loadToggle('smash-roulette'), rouletteSeconds: loadRouletteSeconds(), portraits: {}, itemPortraits: {}, stagePreviews: {}, presentation: loadPresentation(), graphics: loadGraphicsQuality(), graphicsMode: loadGraphicsMode(), effects: loadVisualEffectChoices(), textureUpscale: loadTextureUpscale(), looks: [], look: ORIGINAL_LOOK, activeLook: ORIGINAL_LOOK, cameraShake: loadCameraShakeLevel(), rumble: loadRumbleLevel(), background: null, showFps: loadToggle('smash-show-fps'), showPerf: loadToggle('smash-show-perf'), smoothMotion: loadSmoothMotion(), pauseFocus: null, padNote: 'By default the first human uses WASD / Space / J K L U I (T taunts) and the second uses arrows / Enter / N M comma Right Shift period (B taunts); both layouts can be changed in Options → Keyboard. Additional humans use assigned controllers. Menu / Options opens game options.' });
   readonly hud = new Store<HudView>({ frame: 0, clock: '3:00', status: 'LOADING', mode: 'SOLO / LOCAL', stage: 'battlefield', phase: 'ready', countdown: 0, winner: '', winnerSlot: null, banner: '', onettWarning: false, rouletteIn: null, fighters: [], shieldMax: 60, hill: null });
   readonly fallLog = new Store<FallLogView>({ entries: [] });
   /** Presentation taps for confirmed local match events (Rift Descent HUD popups).
@@ -370,6 +379,10 @@ export class GameSession {
   get spectating(): boolean { return !!this.onlineStep && this.onlineLocalSlot < 0; }
   get localHumans(): PlayerSeat[] { return activeSeats(this.ui.getSnapshot().setup.seats).filter(seat => seat.control === 'human'); }
 
+  /** Look loaded by this session (null = the disc's own art). */
+  private activeLook: string | null = null;
+  /** Portraits are renders of the loaded models, so each look keeps its own cached set. */
+  private previewKey(): string { return this.activeLook ? `${this.fingerprint.content}:look-${this.activeLook}` : this.fingerprint.content; }
   private contentFingerprint(manifest: SourceManifest): Promise<string> {
     return sha256Hex(new TextEncoder().encode(JSON.stringify({ game: manifest.gameId, revision: manifest.revision, exe: manifest.executableSha1, size: manifest.discSize, files: manifest.files.map((file) => [file.path, file.offset, file.size]), modded: manifest.modded ?? null, packs: CUSTOM_PACK_IDENTITIES })));
   }
@@ -450,7 +463,7 @@ export class GameSession {
       // lets such a player switch to their own ISO for the fighters they never downloaded).
       const storedFirst = clientAce && !new URLSearchParams(location.search).has('disc') ? await connectCachedSource({ wholeFileLimit: Number.POSITIVE_INFINITY, missHint: 'This host does not stream game data: reload with your own disc to add it.' }).catch(() => null) : null;
       let fromStored = !!storedFirst;
-      let connected = storedFirst ?? (clientAce ? await this.awaitLocalDiscs(clientAce) : await connectServerSource(fetcher, this.abort.signal).catch((error: unknown) => { onlineError = error; return null; }));
+      let connected: { session: HsdAssetSession; manifest: SourceManifest; look?: string | null } | null = storedFirst ?? (clientAce ? await this.awaitLocalDiscs(clientAce) : await connectServerSource(fetcher, this.abort.signal, { look: (manifest) => chooseLook(manifest) }).catch((error: unknown) => { onlineError = error; return null; }));
       if (fromStored) this.ui.update({ progress: `Playing from previously downloaded data (${connected!.manifest.title}).`, progressFraction: 0.02 });
       // Data downloaded while the host still streamed is partial and this host cannot complete it:
       // count the gaps behind the menus so the player is offered their own disc instead of bare misses.
@@ -460,7 +473,7 @@ export class GameSession {
         // earlier online visit (same disc identity, same hashes). Nothing is
         // re-downloaded; a server update is picked up on the next online visit
         // because the fresh manifest identity retires the old caches.
-        connected = await connectCachedSource().catch(() => null);
+        connected = await connectCachedSource({ look: (manifest) => chooseLook(manifest) }).catch(() => null);
         if (!connected) {
           // A specific server-side failure (bad manifest, HTTP error) is more
           // useful than the generic offline hint; network/timeout/null (static
@@ -474,6 +487,11 @@ export class GameSession {
         this.ui.update({ progress: `Playing offline from downloaded data (${connected.manifest.title}).`, progressFraction: 0.02 });
       }
       this.source = connected.session;
+      // Looks are cosmetic: the fingerprint below stays the original disc's, so rooms mix looks freely.
+      this.activeLook = connected.look ?? null;
+      const lookChoice = loadLookPreference();
+      this.ui.update({ looks: connected.manifest.looks?.map(({ id, name }) => ({ id, name })) ?? [], activeLook: this.activeLook ?? ORIGINAL_LOOK,
+        look: lookChoice === ORIGINAL_LOOK || connected.manifest.looks?.some((look) => look.id === lookChoice) ? lookChoice! : this.activeLook ?? ORIGINAL_LOOK });
       this.ui.update({ progress: 'Fetching the gameplay engine…', progressFraction: 0.02 });
       const response = await fetch('/wasm/melee-gameplay.wasm', { signal: this.abort.signal });
       if (!response.ok) throw new Error('The gameplay WASM build is unavailable. Run npm run build.');
@@ -543,7 +561,7 @@ export class GameSession {
       // Phase 2.2: warm boot reuses cached portraits and skips the capture
       // block entirely; cold boot captures the core roster only, then fills
       // the rest in idle chunks (never one synchronous block of 33).
-      const cached = await readPreviewCache(this.fingerprint.content);
+      const cached = await readPreviewCache(this.previewKey());
       if (cached && !this.disposed) {
         this.ui.update({ portraits: cached.portraits, itemPortraits: cached.itemPortraits, stagePreviews: cached.stagePreviews });
       } else if (!this.disposed && this.content) {
@@ -1047,7 +1065,7 @@ export class GameSession {
     // back as a hit and skip the cold capture that could have filled it.
     if (!Object.keys(view.portraits).length && !Object.keys(view.stagePreviews).length) return;
     const data: PreviewCacheData = { portraits: view.portraits, itemPortraits: view.itemPortraits, stagePreviews: view.stagePreviews };
-    await writePreviewCache(this.fingerprint.content, data);
+    await writePreviewCache(this.previewKey(), data);
   }
   private keydown = (event: KeyboardEvent) => {
     if (event.repeat) return;
@@ -1557,6 +1575,17 @@ export class GameSession {
   }
   /** One screen-space effect: `auto` follows the preset, on/off is pinned and
    * persisted. Cosmetic only, so it applies mid-match without a context rebuild. */
+  /** Applies to fighters and stages built after the change: live GPU textures are left alone. */
+  /** Stores the look for this browser. Loaded models keep theirs until the page reloads. */
+  setLook(value: string): void {
+    saveLookPreference(value);
+    this.ui.update({ look: value });
+  }
+  setTextureUpscale(value: TextureUpscale): void {
+    saveTextureUpscale(value); setTextureUpscale(value);
+    this.ui.update({ textureUpscale: value });
+    this.focus();
+  }
   setVisualEffect(id: VisualEffectId, choice: VisualEffectChoice): void {
     const effects = withVisualEffect(this.ui.getSnapshot().effects, id, choice);
     saveVisualEffectChoices(effects);

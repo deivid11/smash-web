@@ -19,6 +19,9 @@ vi.mock('three', async importOriginal => {
     // buffer and shares the frame's draw counters; both are no-ops here.
     getDrawingBufferSize = (target: {set(x: number, y: number): void}) => { target.set(1280, 720); return target; };
     info = {autoReset: true, reset: vi.fn()};
+    // The off-screen magnifier (web/src/render/magnifier.ts) draws over the finished frame.
+    autoClear = true; clear = vi.fn(); getRenderTarget = () => null; getPixelRatio = () => 1; getClearAlpha = () => 1;
+    getClearColor = (target: unknown) => target;
   }};
 });
 vi.mock('../../web/src/render/model-instance.ts', async () => {

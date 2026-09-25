@@ -8,6 +8,7 @@ export function validateRegistry(entries: readonly InstalledPack[]): readonly In
   if (!validPackIdentities(entries.map(entry => entry.identity))) throw new Error('Invalid, duplicate or unsorted character pack identities.');
   for (const { identity, character: pack } of entries) {
     if (pack.apiVersion !== 1 || pack.kind !== identity.id || !isCustomFighter(pack.kind) || !pack.name?.trim() || pack.name.length > 64 || typeof pack.create !== 'function' || !pack.menu || !pack.specials || ['name', 'begin', 'step', 'land'].some(key => typeof pack.specials[key as keyof CharacterPack['specials']] !== 'function')) throw new Error(`Invalid character pack: ${identity.id}`);
+    if ([pack.landed, pack.aerialAttack, pack.input, pack.cancel, pack.specials.allowed].some(hook => hook !== undefined && typeof hook !== 'function')) throw new Error(`Invalid custom gameplay hook: ${identity.id}`);
     if (pack.presentations?.some(mode => !/^[a-z][a-z0-9-]{0,31}$/u.test(mode.id) || !mode.label || mode.label.length > 64)) throw new Error(`Invalid pack presentation: ${identity.id}`);
   }
   return entries;

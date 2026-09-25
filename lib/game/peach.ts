@@ -70,21 +70,30 @@ export function peachSmashName(f: MatchFighter, physics: MeleePhysics): string {
   f.peachLastSmash = pick;
   return names[pick]!;
 }
-/** ftPe_Float: hover on held jump for the xC duration; one float per airtime. */
+/** ftPe_Float: hover on held jump for the xC duration; one float per airtime. The float
+ * never needs the double jump spent first (the original reads the held button, not the
+ * jump count), and an aerial out of Fuwafuwa keeps hovering — the timer keeps draining,
+ * gravity stays canceled in match.ts, and the float resumes when the attack ends. */
 export function stepPeachFloat(f: MatchFighter, input: PlayerInput): void {
   if (!isPeachKit(f)) return;
   if (f.grounded) { f.peachFloat = { available: true, timer: 0 }; return; }
   const jumpHeld = input.jump;
   const floating = f.animation === 'Fuwafuwa';
-  if (floating) {
+  const live = !f.peachFloat.available && f.peachFloat.timer > 0;
+  const attackFloating = !floating && live && f.state === 'attack';
+  if (floating || attackFloating) {
     f.peachFloat.timer -= 1;
-    if (!jumpHeld || f.peachFloat.timer <= 0) { f.state = 'fall'; f.animation = 'Fall'; f.animationFrame = 0; f.animationEpoch++; return; }
+    if (!jumpHeld || f.peachFloat.timer <= 0) {
+      f.peachFloat.timer = 0;
+      if (floating) { f.state = 'fall'; f.animation = 'Fall'; f.animationFrame = 0; f.animationEpoch++; }
+      return;
+    }
     f.velocity.y = 0;
     return;
   }
-  if (f.peachFloat.available && jumpHeld && f.velocity.y <= 0 && f.jumpsUsed >= f.content.profile.attributes.maxJumps && ['jump', 'airjump', 'fall'].includes(f.state)) {
+  if ((f.peachFloat.available || live) && jumpHeld && f.velocity.y <= 0 && ['jump', 'airjump', 'fall'].includes(f.state)) {
     const p = params(f);
-    f.peachFloat = { available: false, timer: Math.ceil(p.float.duration) };
+    if (f.peachFloat.available) f.peachFloat = { available: false, timer: Math.ceil(p.float.duration) };
     f.state = 'fall'; f.animation = 'Fuwafuwa'; f.animationFrame = 0; f.animationEpoch++;
     f.velocity.y = 0;
   }

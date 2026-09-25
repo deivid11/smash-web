@@ -90,6 +90,9 @@ describe('installed registry and neutral authoring example', () => {
     const visual = await character.prepareVisual!(); visual.dispose();
     const entry = { identity: { id: character.kind, hash: 'a'.repeat(64) }, character };
     expect(validateRegistry([entry])).toHaveLength(1);
+    expect(validateRegistry([{ ...entry, character: { ...character, landed() {}, aerialAttack: () => null, specials: { ...character.specials, allowed: () => true } } }])).toHaveLength(1);
+    for (const key of ['landed', 'aerialAttack'] as const) expect(() => validateRegistry([{ ...entry, character: { ...character, [key]: 7 } as unknown as typeof character }])).toThrow('Invalid custom gameplay hook');
+    expect(() => validateRegistry([{ ...entry, character: { ...character, specials: { ...character.specials, allowed: 7 } } as unknown as typeof character }])).toThrow('Invalid custom gameplay hook');
     expect(() => validateRegistry([entry, entry])).toThrow();
     expect(() => validateRegistry([{ ...entry, character: { ...character, kind: 'custom:other.character' } }])).toThrow();
   });

@@ -14,6 +14,8 @@ This is **not the complete Melee engine**. It combines original disc data and se
 
 **KO feedback:** blast-zone deaths use the original disc-loaded beam model, animation and player colors. Hits and KOs use the stage's native camera-quake curves, with bounded prototype strength/viewport mapping. See [scope and tests](docs/KO_EFFECTS.md).
 
+**Camera range, magnifier and crowd:** the camera stays inside each stage's original camera range, so launched fighters leave the shot and get the original off-screen magnifier bubble. The original crowd gasps, cheers and name chants react to launches, close recoveries and falls. See [docs/OFFSCREEN_CROWD.md](docs/OFFSCREEN_CROWD.md).
+
 **Samus import:** original model, movement/normals and four prototype specials are available in the candidate source. Tether grabs/recovery, bomb self-jumps, walljumps and Samus particle effects remain unported. See [Samus scope and tests](docs/characters/SAMUS.md). Live service promotion requires a jointly validated frontend/server build.
 
 **Frozen:** an ice-element hit with enough knockback seals the victim in the original ice block instead of launching them: they fall at the lightened ice gravity, tumble with it, mash their way out, and a fire hit thaws them on the spot. See [docs/FROZEN.md](docs/FROZEN.md).

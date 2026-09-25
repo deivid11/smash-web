@@ -9,6 +9,7 @@ import type { ModelInstance } from '../../web/src/render/model-instance.ts';
 import type { CustomFighterKind, PackIdentity } from './identity.ts';
 
 export type CustomState = { [key: string]: null | boolean | number | string | CustomState | (null | boolean | number | string | CustomState)[] };
+export interface CustomFrame { shots: number }
 export type FinishSpecial = (helpless?: boolean, lag?: number, mobility?: number) => void;
 export interface CustomSkin {
   render(fighter: MatchFighter, camera: Camera, victory: boolean, presentation: string, alpha: number, paused: boolean): void;
@@ -39,7 +40,19 @@ export interface CharacterPack {
   create(): FighterContent;
   /** Only JSON-compatible, finite, deterministic per-fighter data. Snapshot-owned. */
   initialState?(): CustomState;
+  /** Physical floor contact, before landing-state dispatch; reset snapshot-owned airtime budgets. */
+  landed?(fighter: MatchFighter): void;
+  /** Optional authored aerial selection. Return null to keep the shared default. */
+  aerialAttack?(fighter: MatchFighter, input: PlayerInput): string | null;
+  /** Every simulation frame (hitlag included), before state dispatch: record input history in
+   * snapshot-owned customState only. `frame.shots` counts this fighter's live custom shots. */
+  input?(fighter: MatchFighter, input: PlayerInput, frame: CustomFrame): void;
+  /** Read-only special-cancel gate for this fighter's own normal attacks. Returning a direction
+   * starts that special through the ordinary begin path; null keeps the attack. */
+  cancel?(fighter: MatchFighter, input: PlayerInput): SpecialDirection | null;
   specials: {
+    /** Read-only entry gate, checked before facing/state/velocity changes. */
+    allowed?(fighter: MatchFighter, direction: SpecialDirection, input: PlayerInput): boolean;
     name(direction: SpecialDirection, phase: SpecialRuntime['phase'], air: boolean): string;
     begin(fighter: MatchFighter, direction: SpecialDirection, input: PlayerInput): void;
     step(fighter: MatchFighter, input: PlayerInput, physics: MeleePhysics, finish: FinishSpecial): SpecialStep;

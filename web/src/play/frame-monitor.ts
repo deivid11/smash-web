@@ -13,7 +13,9 @@ export interface SkipState {
 }
 
 export const SKIP_SATURATE_FRAMES = 5;
-export const SKIP_RECOVER_FRAMES = 30;
+// Recover quickly: every skipped level adds up to a rendered frame (~16-33 ms) of purely
+// visual latency, so a machine that has caught up should return to full rate fast.
+export const SKIP_RECOVER_FRAMES = 12;
 
 export function initialSkipState(): SkipState {
   return { level: 0, saturatedStreak: 0, recoverStreak: 0, frame: 0 };

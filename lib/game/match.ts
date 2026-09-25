@@ -11,7 +11,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { ProjectileWorld, type ProjectileState } from './projectiles.ts';
 import { hitSound } from './audio.ts';
 import { beginJab, captureJabInput, stepJab, type JabRuntime } from './jab.ts';
-import { commandFrame, commandValue, hasMeleeRun, locomotionLoops, maxRunBrakeFrames, RUN_BRAKE_STICK, RUN_TURN_STICK, skidOwnsFacing, turnRunStartFacing } from './locomotion.ts';
+import { commandFrame, commandValue, hasMeleeRun, isDashTurn, locomotionLoops, maxRunBrakeFrames, RUN_BRAKE_STICK, RUN_TURN_STICK, runPhaseGate, skidOwnsFacing, turnRunStartFacing } from './locomotion.ts';
 import { CombatController, createCombat, shieldBubble, type CombatRuntime } from './combat.ts';
 import { beginSmash, stepSmash, chargedHits, type SmashRuntime } from './smash.ts';
 import { cStickActive, cStickEdge, smashHeld } from './smash-stick.ts';
@@ -46,7 +46,8 @@ import { pointSegmentDistanceSquared } from './collision.ts';
 export { pointSegmentDistanceSquared } from './collision.ts';
 import { initialNanaState, stepNanaState, nanaStrikeHit, NANA_ANCHOR_BACK, NANA_MIN_TUMBLE, type NanaState } from './nana.ts';
 import type { Velocity } from './physics.ts';
-import { floorY, MAX_FLOOR_SLOPE, type Floor, type StageGameplayData } from './data.ts';
+import { floorY, MAX_FLOOR_SLOPE, STAGE_CAMERA_DEFAULT, type Floor, type StageGameplayData } from './data.ts';
+import { createCrowdState, crowdHit, crowdInterruptWithCheer, crowdStep, floorBox, type CrowdFighter, type CrowdHost, type CrowdState } from './crowd.ts';
 import { MIN_MATCH_PLAYERS, MAX_MATCH_PLAYERS } from './limits.ts';
 import { matchSpawnPoints } from './spawns.ts';
 import { HILL_CAPTURE_DY, HILL_POINT_EVERY, hillHalfWidth, hillLeader, hillTeamOfSlot, makeHillState, relocateHillZones, scoreHillTick, stepHillCapture, validHillSetup, type HillSetup, type HillState } from './hill.ts';
@@ -71,7 +72,7 @@ export interface PlayerInput { x: number; jump: boolean; attack: boolean; strong
    * and never moves the fighter, tap-jumps, fast-falls or steers specials. */
   cX?: number; cY?: number }
 export const neutralInput = (): PlayerInput => ({ x: 0, y: 0, jump: false, attack: false, strong: false, down: false, special: false, taunt: false, cX: 0, cY: 0 });
-export type FighterState = 'idle' | 'walk' | 'run' | 'crouch' | 'squat' | 'jump' | 'airjump' | 'fall' | 'attack' | 'landing' | 'hitstun' | 'ko' | 'respawn' | 'special' | 'helpless' | 'shield' | 'dodge' | 'air-dodge' | 'grab' | 'holding' | 'captured' | 'throw' | 'grab-release' | 'ledge' | 'ledge-action' | 'ledge-jump' | 'shield-break' | 'dizzy' | 'tether' | 'item-throw' | 'item-pickup' | 'bury' | 'frozen' | 'taunt';
+export type FighterState = 'idle' | 'walk' | 'run' | 'crouch' | 'squat' | 'jump' | 'airjump' | 'fall' | 'attack' | 'landing' | 'hitstun' | 'ko' | 'respawn' | 'special' | 'helpless' | 'shield' | 'dodge' | 'air-dodge' | 'grab' | 'holding' | 'captured' | 'throw' | 'grab-release' | 'ledge' | 'ledge-action' | 'ledge-jump' | 'shield-break' | 'dizzy' | 'tether' | 'item-throw' | 'item-pickup' | 'bury' | 'frozen' | 'taunt' | 'downed' | 'tech';
 /** PROTOTYPE (roguelike): per-fighter boon modifiers, hexes and hit hooks for Rift
  * Descent live in `lib/game/roguelike/sim.ts`. Neutral by default so versus play is
  * unchanged; the wrapper in `lib/game/roguelike/apply.ts` assigns them post-countdown.
@@ -86,6 +87,8 @@ export interface MatchFighter {
   animation: string; animationFrame: number; animationRate:number; combat:CombatRuntime; attackName: string | null; attackSerial: number;
   percent: number; stocks: number; jumpsUsed: number; hitlag: number; hitstun: number; invulnerable: number;
   shortHop: boolean; fastFall: boolean; downWindow: number; ignoreFloor: number | null; ignoreTicks: number;
+  /** Adapter equivalent of Dash entry arg1=0 after Turn; part of rollback state. */
+  dashFromTurn: boolean;
   landingFrames: number; previous: PlayerInput; victims: Set<string>;
   /** ftMars fighter var x222C: side-special aerial boost is once per airtime. */
   roySideBoostUsed: boolean;
@@ -158,6 +161,13 @@ export interface MatchFighter {
    * the launch is not a meteor), `jumpAge`/`upSpecialAge` the frames since the last jump /
    * up-special press (fp x685 / x686, capped at 255). Snapshot-owned. */
   hitstunInput: { jumpAt: number; meteorLock: number; jumpAge: number; upSpecialAge: number };
+  /** PROTOTYPE tech (ukemi): `ready` counts down the valid window a fresh L/R/Z press
+   * arms, `lock` the miss lockout that keeps a mash from re-arming (the original keeps
+   * these in x67F-family counters; the frame constants here are prototype values). */
+  tech: { ready: number; lock: number };
+  /** PROTOTYPE unstick: consecutive frames fully blocked against a wall while airborne.
+   * Geometry has no push-out, so a wedged fighter is eased off after a few frames. */
+  wedged: number;
   /** PROTOTYPE (roguelike): boon modifiers + venom DoT. Neutral/null outside Rift Descent. */
   rogue: RogueMods; poison: RoguePoison | null; hex: RogueHex | null;
   /** PROTOTYPE (zombies): infection side. False in every other mode; snapshot-owned. */
@@ -177,7 +187,7 @@ export interface PoseProvider {
   partnerPoint?(fighter:MatchFighter,bone:number,offset:V3):V3;
   point(fighter: MatchFighter, bone: number, offset: V3): V3;
 }
-export interface MatchEvent { type: 'gfx' | 'jump' | 'hit' | 'ko' | 'infect' | 'respawn' | 'end' | 'sound' | 'shot' | 'reflect' | 'bounce' | 'cape' | 'shield' | 'shield-break' | 'grab' | 'throw' | 'ledge' | 'counter' | 'transform' | 'rogue'; player: number; x: number; y: number; damage?: number; sound?: number; volume?: number; pan?: number; scope?: number; projectileKind?: ProjectileKind; element?: number; effect?:number; facing?:number; knockback?:number; /** Hitbox sound severity (ftColl sfx_severity): >=1 may add the random 1007 sparkle. */ severity?:number; floorAngle?:number; /** Script gfx: the resolved joint and offset, for effects that ride their bone. */ bone?:number; offset?:readonly [number,number,number]; kind?: FighterKind; /** PROTOTYPE (roguelike): HUD popup trigger on `rogue` events. */ rogue?: RogueFx }
+export interface MatchEvent { type: 'gfx' | 'jump' | 'hit' | 'ko' | 'infect' | 'respawn' | 'end' | 'sound' | 'shot' | 'reflect' | 'bounce' | 'cape' | 'shield' | 'shield-break' | 'grab' | 'throw' | 'ledge' | 'counter' | 'transform' | 'rogue'; player: number; x: number; y: number; damage?: number; sound?: number; volume?: number; pan?: number; scope?: number; projectileKind?: ProjectileKind; element?: number; effect?:number; facing?:number; knockback?:number; /** Hitbox sound severity (ftColl sfx_severity): >=1 may add the random 1007 sparkle. */ severity?:number; floorAngle?:number; /** Script gfx: the resolved joint and offset, for effects that ride their bone. */ bone?:number; offset?:readonly [number,number,number]; kind?: FighterKind; /** PROTOTYPE (roguelike): HUD popup trigger on `rogue` events. */ rogue?: RogueFx; /** Original single-voice channel (crowd 5/6): a new sound on it cuts the previous one; 540000 only stops it. */ channel?: number }
 /** Diagnostic ground-loss trail (prototype only, never hashed): each grounded->airborne
  * support loss with position/floor/reason, so a phantom fall can be reported verbatim
  * as `stage f123 P1 Name (x,y) floor 5 -> air [walk-off]` and reproduced. */
@@ -186,6 +196,10 @@ export interface GroundLossEntry { frame: number; player: number; name: string; 
 export const MAX_GROUND_LOSS_ENTRIES = 50;
 /** PlCo ftCommonData hitstun recovery values (NTSC 1.02), for content without the parsed table. */
 const HITSTUN_RECOVERY = { jumpBuffer: 20, pressGap: 40, meteorAngleMin: 260, meteorAngleMax: 280, meteorLockout: 8 } as const;
+/** PROTOTYPE tech/knockdown timing: the press window and miss lockout mirror the original
+ * 20/40 frames; invulnerability and the auto-stand are prototype values (the original
+ * never stands on its own — the timer keeps input-less CPUs from lying down forever). */
+const TECH_WINDOW = 20, TECH_LOCKOUT = 40, TECH_INVULN = 20, DOWN_AUTO_STAND = 30;
 /** PROTOTYPE (zombies): horde tuning. The infected hit harder and take more —
  * pressure over durability, on top of original damage/knockback coupling. */
 export const ZOMBIE_DEALT_MUL = 1.2;
@@ -297,9 +311,15 @@ export interface MatchState {
   peachBill: PeachBillRuntime | null;
   /** First infected slot (patient zero); null until the horde exists. */
   firstInfected: number | null;
+  /** Original crowd reactions (lib/game/crowd.ts); null without PlCo crowd data. */
+  crowd?: CrowdState | null;
 }
 const f32 = Math.fround;
 const between = (value: number, a: number, b: number) => value >= Math.min(a, b) - 0.001 && value <= Math.max(a, b) + 0.001;
+/** ftCo_Damage launch direction: horizontal knockback runs away from the striking
+ * fighter's position, so a victim standing behind the back is sent backwards instead
+ * of dragged forward through the attacker; a dead-center overlap keeps the facing. */
+const strikeDirection = (attackerX: number, facing: number, victimX: number): number => Math.sign(victimX - attackerX) || facing;
 /** Parametric intersection (movement o→n at t, line a→b at s), or null when disjoint. */
 function lineCrossing(line: Pick<Floor, 'a' | 'b'>, ox: number, oy: number, nx: number, ny: number): { t: number; s: number } | null {
   const fx = line.b[0] - line.a[0], fy = line.b[1] - line.a[1];
@@ -380,6 +400,8 @@ export class LocalMatch {
   /** Mute City road runtime (authoritative, snapshot-owned like the Stadium
    * clock); null on every other stage. Presentation only reads it. */
   muteCity: MuteCityRuntime | null = null;
+  /** Original versus crowd (crowdsfx.c): snapshot-owned, emits ordinary sound events. */
+  crowd: CrowdState | null = null;
   /** Per-frame combined collision cache for Green Greens (base + live blocks).
    * Recomputed at most once per frame; the Yoshi mask cache below stays separate. */
   private greensCache: { frame: number; stage: StageGameplayData; floors: Floor[]; surfaces: readonly StageSurface[] } | null = null;
@@ -481,6 +503,7 @@ export class LocalMatch {
     // so replays reproduce launches; other stages consume nothing here.
     this.peachBill = this.content.stageId === 'peach-castle' && this.content.peachBillData ? createPeachBillRuntime(this.content.physics, this.content.peachBillData) : null;
     this.muteCity = this.content.stageId === 'mute-city' && this.content.muteCityData ? createMuteCityRuntime() : null;
+    this.crowd = this.content.common.crowd ? createCrowdState(this.content.common.crowd, content.fighters.length) : null;
     // With the item rule off this consumes no RNG, so itemless replays keep their stream.
     this.itemWorld = new ItemWorld(this.content, this.options.itemFrequency, this.options.itemSwitches);
     this.fighters.forEach((fighter) => this.poses.sample(fighter,false));
@@ -493,10 +516,10 @@ export class LocalMatch {
       slot, seatId: this.seatIds[slot]!, content, x: spawn[0], y: floor ? floorY(floor, spawn[0]) : spawn[1], velocity: { x: 0, y: 0 }, knockback: { x: 0, y: 0 },
       grounded: !!floor, floor: floor?.id ?? null, facing: this.content.fighters.length > 4 ? (spawn[0] < (this.content.stage.mainLeft + this.content.stage.mainRight) / 2 ? 1 : -1) : slot === 0 ? 1 : -1, state: 'idle', stateFrame: 0,
       animation: 'Wait1', animationFrame: 0, animationRate:1, combat:createCombat(this.content), attackName: null, attackSerial: 0, percent: 0, stocks: this.options.stocks,
-      jumpsUsed: floor ? 0 : 1, hitlag: 0, hitstun: 0, invulnerable: 0, shortHop: false, fastFall: false,
+      jumpsUsed: floor ? 0 : 1, hitlag: 0, hitstun: 0, invulnerable: 0, shortHop: false, fastFall: false, dashFromTurn: false,
       downWindow: 0, ignoreFloor: null, ignoreTicks: 0, landingFrames: 0, previous: neutralInput(), victims: new Set(),
       roySideBoostUsed: false, special: null, specialSerial: 0, animationEpoch: 0, specialLandingLag: 0, specialMobility: 1, capeBoostUsed: false, tornadoUsed: false, popoHoverUsed: false, jab: null, smash:null,
-      airJumpTurn: 0, hammerBoostUsed: false, copyAbility: null, samusCharge: 0, samusSideTicks: 255, sheikNeedles: 0, gwOil: 0, gwOilDamage: 0, gwJudge1: 1, gwJudge2: 0, gwChefA: 1, gwChefB: 3, gwJudgeHop: false, dkPunchCharge: 0, sonicCharge: 0, glideUsed: false, bsonic: createBSonicVars(), skullkid: createSkullKidVars(), envContact: null, mewtwoCharge: 0, mewtwoBoostUsed: false, koopaBreath: 360, lizardonFuel: { speed: 0, size: 0 }, tailsFuelUsed: 0, peachTurnip: null, peachFloat: { available: true, timer: 0 }, peachLastSmash: -1, link: createLinkState(), heldItem: null, itemStatus: null, itemFx: null, bury: null, ice: null, trip: null, hitstunInput: { jumpAt: 0, meteorLock: -1, jumpAge: 255, upSpecialAge: 255 }, nana: null, rogue: { ...NEUTRAL_ROGUE_MODS }, poison: null, hex: null, infected: false, kos: 0, falls: 0, damageDealt: 0, lastHitBy: null,
+      airJumpTurn: 0, hammerBoostUsed: false, copyAbility: null, samusCharge: 0, samusSideTicks: 255, sheikNeedles: 0, gwOil: 0, gwOilDamage: 0, gwJudge1: 1, gwJudge2: 0, gwChefA: 1, gwChefB: 3, gwJudgeHop: false, dkPunchCharge: 0, sonicCharge: 0, glideUsed: false, bsonic: createBSonicVars(), skullkid: createSkullKidVars(), envContact: null, mewtwoCharge: 0, mewtwoBoostUsed: false, koopaBreath: 360, lizardonFuel: { speed: 0, size: 0 }, tailsFuelUsed: 0, peachTurnip: null, peachFloat: { available: true, timer: 0 }, peachLastSmash: -1, link: createLinkState(), heldItem: null, itemStatus: null, itemFx: null, bury: null, ice: null, trip: null, hitstunInput: { jumpAt: 0, meteorLock: -1, jumpAge: 255, upSpecialAge: 255 }, tech: { ready: 0, lock: 0 }, wedged: 0, nana: null, rogue: { ...NEUTRAL_ROGUE_MODS }, poison: null, hex: null, infected: false, kos: 0, falls: 0, damageDealt: 0, lastHitBy: null,
     };
     Object.defineProperty(fighter, 'seatId', {writable: false, configurable: false});
     resetLizardonFuel(fighter);
@@ -518,6 +541,7 @@ export class LocalMatch {
     if (state !== 'bury' && fighter.bury) { fighter.y = f32(fighter.y + fighter.bury.depth); fighter.bury = null; }
     if (state !== 'frozen' && fighter.ice) fighter.ice = null;
     fighter.trip = null;
+    fighter.dashFromTurn = false;
     fighter.state = state; fighter.stateFrame = 0; fighter.animation = animation; fighter.animationFrame = 0; fighter.animationRate=1;
     fighter.animationEpoch++;
     if (!['attack','special','grab','throw','ledge-action'].includes(state)) fighter.attackName = null;
@@ -542,7 +566,7 @@ export class LocalMatch {
     if(this.itemWorld&&fighter.heldItem!==null&&['hitstun','ko','captured','shield-break','dizzy'].includes(state))this.itemWorld.dropHeld(fighter);
     if (state !== 'airjump') fighter.airJumpTurn = 0;
     // ftCo_Damage sets x67F to 0xFF: a press before the hit cannot L-cancel the next landing.
-    if (state === 'hitstun') { fighter.specialLandingLag = 0; fighter.specialMobility = 1; fighter.link.shieldAge = 255; }
+    if (state === 'hitstun') { fighter.specialLandingLag = 0; fighter.specialMobility = 1; fighter.link.shieldAge = 255; fighter.tech.ready = 0; }
   }
   private canAirJump(fighter: MatchFighter): boolean {
     return fighter.jumpsUsed < fighter.content.profile.attributes.maxJumps + (fighter.rogue?.extraJumps ?? 0) && airJumpAllowed(fighter);
@@ -564,6 +588,13 @@ export class LocalMatch {
     fighter.knockback = { x: 0, y: 0 }; fighter.hitstun = 0;
     fighter.hitstunInput.jumpAt = 0; fighter.hitstunInput.meteorLock = -1;
     this.change(fighter, 'fall', 'Fall');
+  }
+  /** PROTOTYPE getup out of the knockdown wait: the stand/roll motions keep their
+   * original clips and root motion and are invulnerable through most of the animation. */
+  private getUp(fighter: MatchFighter, motion: string): void {
+    if (!fighter.content.clips.has(motion)) { this.change(fighter, 'idle', 'Wait1'); return; }
+    this.change(fighter, 'tech', motion);
+    fighter.invulnerable = Math.max(fighter.invulnerable, Math.min(TECH_INVULN + 10, Math.ceil(fighter.content.clips.get(motion)!.endFrame)));
   }
   private attack(fighter: MatchFighter, name: string, chain = false): void {
     if (!chain) fighter.jab = name === fighter.content.moves.jab ? beginJab(fighter.content) : null;
@@ -736,7 +767,7 @@ export class LocalMatch {
         if ((victim.grounded && !hit.grounded) || (!victim.grounded && !hit.airborne)) continue;
         const point = this.poses.point(attacker, hit.bone, hit.offset);
         const connect = this.strikeConnect(victim, hit, point);
-        if (connect) { impacts.push({ attacker, victim, hit, point, shield: connect.shield, ...(connect.royCounter ? { royCounter: true } : {}), facing: attacker.facing, vkey: `${victim.slot}:${hit.group}:${hit.activation}` }); break outer; }
+        if (connect) { impacts.push({ attacker, victim, hit, point, shield: connect.shield, ...(connect.royCounter ? { royCounter: true } : {}), facing: strikeDirection(attacker.x, attacker.facing, victim.x), vkey: `${victim.slot}:${hit.group}:${hit.activation}` }); break outer; }
       }
       // Nana echo: the synced partner swings the same hammer from her own pose,
       // so the duo can land both hits in one frame (separate victim keys below).
@@ -750,7 +781,7 @@ export class LocalMatch {
           if ((victim.grounded && !hit.grounded) || (!victim.grounded && !hit.airborne)) continue;
           const point = this.poses.partnerPoint(attacker, hit.bone, hit.offset);
           const connect = this.strikeConnect(victim, hit, point);
-          if (connect) { impacts.push({ attacker, victim, hit, point, shield: connect.shield, ...(connect.royCounter ? { royCounter: true } : {}), facing: partner.facing, echo: true, vkey }); break; }
+          if (connect) { impacts.push({ attacker, victim, hit, point, shield: connect.shield, ...(connect.royCounter ? { royCounter: true } : {}), facing: strikeDirection(partner.x, partner.facing, victim.x), echo: true, vkey }); break; }
         }
       }
     }
@@ -777,7 +808,7 @@ export class LocalMatch {
           for (const hurt of fighterHurts(owner)) {
             if (!hurtEnabled(owner, hurt.bone)) continue;
             const a = this.poses.partnerPoint!(owner, hurt.bone, hurt.a), b = this.poses.partnerPoint!(owner, hurt.bone, hurt.b);
-            if (pointSegmentDistanceSquared(point, a, b) <= (hit.radius + hurt.radius) ** 2) { impacts.push({ attacker, victim: owner, hit, point, shield: false, facing: attacker.facing, nana: owner, vkey }); break; }
+            if (pointSegmentDistanceSquared(point, a, b) <= (hit.radius + hurt.radius) ** 2) { impacts.push({ attacker, victim: owner, hit, point, shield: false, facing: strikeDirection(attacker.x, attacker.facing, nana.x), nana: owner, vkey }); break; }
           }
         }
       }
@@ -937,6 +968,7 @@ export class LocalMatch {
     }
     this.combat.syncAnchors();
     profiler.end(SPAN_ANIM);
+    if (this.crowd && this.content.common.crowd) crowdStep(this.crowd, this.crowdHost(), this.crowdFighters());
     // King of the Hill runs while the clock does: every fighter in a zone fills
     // their own capture meter, a captured zone pays its owner every second
     // (occupied or not), and the hills relocate on their own clock.
@@ -949,6 +981,23 @@ export class LocalMatch {
       if (--this.hill.relocateIn <= 0) relocateHillZones(this.hill, this.hillAnchors);
     }
     if (this.remainingFrames <= 0 && this.phase === 'playing') this.finish();
+  }
+  /** The crowd's view of the world this frame (live stage: Stadium swaps its floors). */
+  private crowdHost(): CrowdHost {
+    const stage = this.content.stage;
+    return {
+      frame: this.frame, config: this.content.common.crowd!, floors: floorBox(this.activeFloors()),
+      camera: stage.camera ?? STAGE_CAMERA_DEFAULT, blastBottom: stage.blast.bottom,
+      duration: (sound) => this.content.sound?.durationFrames?.(sound) ?? 0,
+      sound: (sound, player, channel) => { const f = this.fighters[player]; this.events.push({ type: 'sound', player, x: f?.x ?? 0, y: f?.y ?? 0, sound, volume: 127, pan: 64, ...(channel === undefined ? {} : { channel }) }); },
+    };
+  }
+  private crowdFighters(): CrowdFighter[] {
+    return this.fighters.map((f) => ({
+      slot: f.slot, x: f.x, y: f.y, grounded: f.grounded, out: f.state === 'ko' || f.state === 'respawn',
+      helpless: f.state === 'helpless', inHitstun: f.hitstun > 0, percent: f.percent, cpu: this.controllerKinds[f.slot] === 'cpu',
+      kind: f.content.profile.kind, costume: f.content.costume, chantSound: f.content.profile.chantSound,
+    }));
   }
   /** Dense slots currently standing on each active hill zone (grounded, alive, within the patch). */
   private hillOccupants(): number[][] {
@@ -989,7 +1038,7 @@ export class LocalMatch {
     const releasedAttack = !input.attack && fighter.previous.attack;
     // C-stick smash routing (see `lib/game/smash-stick.ts`): a fresh right-stick
     // flick fires Strong with the flick's own direction; holding it charges like a
-    // held Strong button. Attack selection, facing, items and ledge attacks read
+    // held Strong button. Attack selection, facing and items read
     // the merged `atk` vector below, while movement, tap-jump, fast-fall, drops
     // and specials keep reading the left stick (`input`).
     const cEdge = cStickEdge(input, previous);
@@ -1007,7 +1056,13 @@ export class LocalMatch {
     // smash or special edge keeps its priority (up-tilt/up-smash/up-special inputs).
     if (input.y > 0.66 && (previous.y ?? 0) <= 0.66 && !attack && !strong && !specialPressed) jump = true;
     // Fighter x67F: frames since an L/R/Z press (shield or grab here), read by the L-cancel window.
-    fighter.link.shieldAge = (input.shield && !previous.shield) || (input.grab && !previous.grab) ? 0 : Math.min(255, fighter.link.shieldAge + 1);
+    const techPress = (input.shield && !previous.shield) || (input.grab && !previous.grab);
+    fighter.link.shieldAge = techPress ? 0 : Math.min(255, fighter.link.shieldAge + 1);
+    // PROTOTYPE tech (ukemi): a fresh press arms the window unless a recent press is still
+    // locked out; the tumble landing and hitstun wall contact below consume `ready`.
+    if (fighter.tech.ready > 0) fighter.tech.ready--;
+    if (fighter.tech.lock > 0) fighter.tech.lock--;
+    if (techPress) { if (fighter.tech.lock === 0) fighter.tech.ready = TECH_WINDOW; fighter.tech.lock = TECH_LOCKOUT; }
     // Fighter_UnkIncrementCounters_8006ABEC: the gap since the previous jump / up-special
     // press (x68A / x68B) keeps a mashed input from meteor canceling.
     const recovery = fighter.hitstunInput, jumpGap = recovery.jumpAge, upSpecialGap = recovery.upSpecialAge;
@@ -1015,10 +1070,13 @@ export class LocalMatch {
     recovery.jumpAge = jump ? 0 : Math.min(255, recovery.jumpAge + 1);
     recovery.upSpecialAge = upSpecialPressed ? 0 : Math.min(255, recovery.upSpecialAge + 1);
     fighter.previous = { ...input };
+    // Custom packs record their own input history (motion commands) every frame, hitlag included.
+    const customPack = customCharacter(fighter.content.profile.kind);
+    if (customPack?.input) customPack.input(fighter, input, { shots: this.projectiles.items.filter((item) => item.owner === fighter.slot && item.kind === 'custom-shot').length });
     // Merged attack vector + original flick-smash windows. `atk` carries the
     // C-stick's direction on its flick frame (with a synthesized Strong hold) and
     // the left stick otherwise; `atkPrev` synthesizes the matching Strong history
-    // so item, turnip, tether and ledge code sees a flick exactly like Strong plus
+    // so item, turnip and tether code sees a flick exactly like Strong plus
     // that left-stick direction. The flick windows reuse the original PlCo
     // stick-timing thresholds also used for item throws (`lib/game/items.ts`), so
     // tapping the left stick fast while pressing attack smashes like the original
@@ -1138,7 +1196,16 @@ export class LocalMatch {
       else if (fighter.state === 'idle' && fighter.jab.window === 0) fighter.jab = null;
     }
     const attrs = fighter.content.profile.attributes;
-    if(this.combat.before(fighter,atk,atkPrev))return;
+    // Ledge callbacks need both ORIGINAL sticks: merging C-stick into Strong turns a drop
+    // into an attack and overwrites the left-stick neutral/rearm history.
+    const wasOnLedge=fighter.state==='ledge'||fighter.state==='ledge-action';
+    if(this.combat.before(fighter,wasOnLedge?input:atk,wasOnLedge?previous:atkPrev))return;
+    if(wasOnLedge&&fighter.state==='fall'){
+      // A ledge release consumes its action input. Continue airborne physics this tick,
+      // but do not reuse a C-stick drop as an aerial or item throw in the same frame.
+      attack=false;strong=false;jump=false;specialPressed=false;
+      Object.assign(atk,{attack:false,strong:false,special:false,jump:false,shield:false,grab:false,cX:0,cY:0});
+    }
     if(stepSmash(fighter,heldStrong,this.content.common.chargeSoundFrame))this.events.push({type:'sound',player:fighter.slot,x:fighter.x,y:fighter.y,sound:123,volume:127,pan:64});
     let justJumped = false;
     if (fighter.trip && fighter.state === 'hitstun') stepTrip(fighter);
@@ -1163,6 +1230,34 @@ export class LocalMatch {
           this.airJump(fighter, input); jump = false; justJumped = true;
         } else if (jump) recovery.jumpAt = fighter.hitstun;
       }
+    }
+    // PROTOTYPE knockdown (ftCo Down states, face-up family only): DownBoundU plays out
+    // into DownWaitU; from the wait, attack takes the getup attack, a sideways stick the
+    // invulnerable getup roll, jump/up (or the auto-stand timer, so input-less CPUs never
+    // lie forever) the plain stand. Rolls/stands run through the `tech` state below and
+    // keep their original root motion; a fresh hit interrupts all of it through applyHit.
+    if (fighter.state === 'downed') {
+      const clipEnd = fighter.content.clips.get(fighter.animation)?.endFrame ?? 0;
+      if (fighter.animation !== 'DownWaitU') {
+        if (fighter.animationFrame >= clipEnd) this.change(fighter, 'downed', fighter.content.clips.has('DownWaitU') ? 'DownWaitU' : 'Wait1');
+        if (fighter.animation === 'Wait1') this.change(fighter, 'idle', 'Wait1');
+      } else {
+        const roll = Math.abs(input.x) > 0.5 ? (input.x * fighter.facing > 0 ? 'DownFowardU' : 'DownBackU') : null;
+        if ((attack || strong) && fighter.content.attacks.has('DownAttackU')) this.attack(fighter, 'DownAttackU');
+        else if (roll && fighter.content.clips.has(roll)) this.getUp(fighter, roll);
+        else if (jump || (input.y ?? 0) > 0.5 || attack || strong || fighter.stateFrame >= DOWN_AUTO_STAND) this.getUp(fighter, 'DownStandU');
+      }
+    }
+    // Tech in place, tech rolls, wall techs and getups play out and release the fighter.
+    if (fighter.state === 'tech' && fighter.animationFrame >= (fighter.content.clips.get(fighter.animation)?.endFrame ?? 0)) {
+      this.change(fighter, fighter.grounded ? 'idle' : 'fall', fighter.grounded ? 'Wait1' : 'Fall');
+    }
+    // ftCo_Turn_Enter_Smash sets frames_to_turn=0. The NEXT Anim callback flips once,
+    // before IASA: releasing the stick on this frame leaves a pivot rather than a new dash.
+    // State/animation/frame are already snapshot-owned; no renderer-owned turn flags.
+    if (isDashTurn(fighter)) {
+      if (fighter.stateFrame === 1) fighter.facing = -fighter.facing;
+      if (fighter.animationFrame >= fighter.content.clips.get('Turn')!.endFrame) this.change(fighter, 'idle', 'Wait1');
     }
     if (fighter.state === 'landing' && fighter.stateFrame >= fighter.landingFrames) this.change(fighter, 'idle', 'Wait1');
     if (fighter.state === 'attack' && fighter.animationFrame >= fighter.content.clips.get(fighter.animation)!.endFrame) {
@@ -1223,19 +1318,41 @@ export class LocalMatch {
     // flag 0, aerials out of the spin-charge jump): hand the input to the normal action pass.
     const specialWindow = fighter.state === 'special' ? specialInterruptible(fighter) : null;
     if (specialWindow && (attack || strong || (specialWindow === 'aerial-jump' && jump) || (specialWindow === 'full' && (jump || specialPressed || !!input.shield || !!input.grab || (fighter.grounded && (!!input.x || low)))))) finishSpecial(fighter);
-    const canAct = (interruptedInput!==null || finisherAttack || interruptible || ['idle', 'walk', 'run', 'crouch', 'jump', 'airjump', 'fall'].includes(fighter.state)) && !bsonicFallLocked(fighter, attack || strong || specialPressed || specialWindow !== null);
+    // Custom packs may cancel their own connected normals into a special (read-only gate, then the
+    // ordinary begin path); built-in fighters never reach this.
+    const cancelInto = fighter.state === 'attack' && customPack?.cancel ? customPack.cancel(fighter, input) : null;
+    if (cancelInto) beginSpecial(fighter, cancelInto, input, this.content.common);
+    const canAct = !cancelInto && (interruptedInput!==null || finisherAttack || interruptible || ['idle', 'walk', 'run', 'crouch', 'jump', 'airjump', 'fall'].includes(fighter.state)) && !bsonicFallLocked(fighter, attack || strong || specialPressed || specialWindow !== null);
     if (canAct) {
       const itemHandled=!specialPressed&&!jump&&handleItemInput(fighter,atk,atkPrev,this.projectiles,this.content,(state,animation)=>this.change(fighter,state,animation),this.itemWorld,this.events);
-      if (fighter.grounded && atk.x && !input.shield && !itemHandled && !skidOwnsFacing(fighter)) fighter.facing = atk.x > 0 ? 1 : -1;
+      // A dash/run/skid owns its facing against the bare stick, but a smash input turns
+      // the fighter first (ftCo_Turn_Enter_Smash): back C-stick or a flick-back f-smash
+      // out of a dash comes out the new way instead of the stale one.
+      const facingBefore = fighter.facing;
+      // Dash, Run, TurnRun, RunBrake and Turn accept only what their own IASA checks (runPhaseGate).
+      const gate = fighter.grounded ? runPhaseGate(fighter, this.content.common) : null;
+      if (fighter.grounded && atk.x && !input.shield && !itemHandled && (!skidOwnsFacing(fighter) || ((strong || flickSide) && (!gate || gate.attack === 'standing')) || (strong && gate?.attack === 'forward-smash'))) fighter.facing = atk.x > 0 ? 1 : -1;
+      // ftCo_AttackDash_CheckInput reads A alone (stick ignored, no C-stick smash). The initial Dash
+      // window only takes a forward smash (ftCo_AttackS4_8008C114): A with the stick held forward, or
+      // a fresh C-stick either way (a back one turns the fighter).
+      const gatedAttack = !gate || gate.attack === 'standing' ? attack || strong
+        : gate.attack === 'dash' ? attack
+        : gate.attack === 'forward-smash' ? strong || (attack && input.x * facingBefore >= this.content.common.dashThreshold) : false;
+      // Where the motion takes a grab but no guard, only the grab half of the defense input counts.
+      const guardless = gate !== null && gate.shield !== 'guard';
+      const guarded = guardless ? { ...atk, shield: false, grab: !!atk.grab || (!!atk.shield && atk.attack && !atkPrev.attack) } : atk;
+      const defenseInput = gate && !gate.grab ? { ...guarded, grab: false, attack: false } : guarded;
       if (itemHandled) { /* Native item pickup/throw takes the attack input. */ }
-      else if (this.combat.tryAction(fighter,atk,atkPrev)) { /* Defense/grab owns this input. */ }
+      else if ((!gate || gate.grab || gate.shield === 'guard') && this.combat.tryAction(fighter,defenseInput,guardless ? { ...atkPrev, shield: false } : atkPrev)) { /* Defense/grab owns this input. */ }
+      // ftCo_80099264: a held shield in the initial Dash window rolls forward.
+      else if (gate?.shield === 'roll' && atk.shield) this.combat.roll(fighter, 'EscapeF');
       // A heavy crate carry blocks specials and jumps (ftCo heavy-item locks).
-      else if (specialPressed && !this.itemWorld.heavyHeld(fighter) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) beginSpecial(fighter, selectSpecial(input), input, this.content.common);
+      else if (specialPressed && (!gate || gate.specials.includes(selectSpecial(input))) && !this.itemWorld.heavyHeld(fighter) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) beginSpecial(fighter, selectSpecial(input), input, this.content.common);
       // ftCo_800DE9D8 (ftCo_AppealS.c), reached from Wait/Walk/Dash/Run/Turn/Squat* and an
       // attack's own IASA: the Appeal sits after every attack, grab and shield check in
       // ftCo_Wait_IASA and BEFORE jump, dash, turn and walk — so a same-frame attack keeps the
       // input, a same-frame jump does not. Heavy-item carries keep their ftCo lock.
-      else if (tauntPressed && !attack && !strong && fighter.grounded && !this.itemWorld.heavyHeld(fighter) && fighter.state !== 'taunt'
+      else if (tauntPressed && !attack && !strong && fighter.grounded && (!gate || gate.taunt) && !this.itemWorld.heavyHeld(fighter) && fighter.state !== 'taunt'
         && (interruptible || ['idle', 'walk', 'run', 'crouch'].includes(fighter.state)) && tauntAnimation(fighter.content, fighter.facing)) {
         const motion = tauntAnimation(fighter.content, fighter.facing)!;
         this.change(fighter, 'taunt', motion);
@@ -1246,32 +1363,52 @@ export class LocalMatch {
       else if (jump && !justJumped && !this.itemWorld.heavyHeld(fighter) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) {
         if (fighter.grounded) { fighter.shortHop = false; this.change(fighter, 'squat', 'Landing'); }
         else if (this.canAirJump(fighter)) { this.airJump(fighter, input); justJumped = true; }
-      } else if ((attack || strong) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) {
+      } else if ((fighter.grounded ? gatedAttack : attack || strong) && !['hammer','warp'].includes(fighter.itemStatus?.kind ?? '')) {
         const moves = fighter.content.moves;
         const high=atkY>0.5,side=Math.abs(atkX)>0.28;
         const sideSmash = strong || flickSide, upSmash = strong || flickUp, downSmash = strong || flickDown;
-        const name = fighter.grounded
+        const name = gate?.attack === 'dash' ? moves.dash : gate?.attack === 'forward-smash' ? peachSmashName(fighter, this.content.physics) : fighter.grounded
           ? (low ? (downSmash ? moves.downSmash : moves.downTilt)
             : high&&(upSmash?moves.upSmash:moves.upTilt) ? (upSmash?moves.upSmash!:moves.upTilt!)
             : sideSmash ? peachSmashName(fighter, this.content.physics) : fighter.state==='run'&&!input.walk ? moves.dash : side&&moves.sideTilt ? moves.sideTilt : moves.jab)
-          : low ? moves.downAir : high&&moves.upAir ? moves.upAir : side&&atkX*fighter.facing<0&&moves.backAir ? moves.backAir : strong ? moves.forwardAir : moves.neutralAir;
+          : customCharacter(fighter.content.profile.kind)?.aerialAttack?.(fighter, atk)
+            ?? (low ? moves.downAir : high&&moves.upAir ? moves.upAir : side&&atkX*fighter.facing<0&&moves.backAir ? moves.backAir : strong ? moves.forwardAir : moves.neutralAir);
         // A held battering item swaps grounded forward/neutral normals for its swing
         // (ftCo_Attack_800CCF58); up/down attacks keep the fighter's own moves.
-        const swingCategory = fighter.grounded && !low && !high ? (sideSmash ? 'smash' as const : fighter.state === 'run' && !input.walk ? 'dash' as const : side ? 'tilt' as const : 'jab' as const) : null;
+        const swingCategory = gate?.attack === 'dash' ? 'dash' as const : gate?.attack === 'forward-smash' ? 'smash' as const : fighter.grounded && !low && !high ? (sideSmash ? 'smash' as const : fighter.state === 'run' && !input.walk ? 'dash' as const : side ? 'tilt' as const : 'jab' as const) : null;
         const swing = swingCategory ? this.itemWorld.swingFor(fighter, swingCategory) : null;
         this.attack(fighter, swing ?? name);
       } else if (fighter.grounded) {
-        if (low) {
+        // ftCo_Dash_CheckInput (Wait/Walk/SquatWait/attack IASAs) needs a fresh flick: |x| past the dash
+        // threshold within PlCo x40 frames of crossing the smash deadzone. A held stick walks instead.
+        const melee = hasMeleeRun(fighter.content), crouching = melee && fighter.state === 'crouch';
+        const freshDash = Math.abs(input.x) >= this.content.common.dashThreshold && fighter.link.sideTicks < (this.content.common.dashInputWindow ?? 2);
+        const crouchEnded = crouching && fighter.animationFrame >= (fighter.content.clips.get(fighter.animation)?.endFrame ?? 0);
+        // ftCo_Squat_IASA: the crouch-down clip has no dash, walk or stand-up; it plays into SquatWait.
+        if (crouching && fighter.animation === 'Squat' && !crouchEnded) { /* held until the clip ends */ }
+        // ftCo_SquatRv_IASA: standing up only walks (ftCo_Walk_CheckInput); it ends into Wait.
+        else if (crouching && fighter.animation === 'SquatRv' && !crouchEnded) { if (input.x) this.change(fighter, 'walk', 'WalkSlow'); }
+        // ftCo_800D5FB0 (squat) is absent from the Dash, Run, Turn and TurnRun IASAs; SquatWait checks
+        // a fresh dash flick before anything that keeps it crouched.
+        else if (low && (gate ? gate.crouch : true) && !(crouching && fighter.animation !== 'SquatRv' && freshDash)) {
           if (fighter.state !== 'crouch' || fighter.animation === 'SquatRv') this.change(fighter, 'crouch', 'Squat');
           else if (fighter.animation === 'Squat' && fighter.animationFrame >= fighter.content.clips.get('Squat')!.endFrame) this.change(fighter, 'crouch', fighter.content.motions?.crouchWait ?? 'SquatWait');
-        } else if (!input.walk && !this.itemWorld.heavyHeld(fighter) && this.stepRunPhase(fighter, input.x)) {
-          /* Dash, Run, TurnRun and RunBrake read the stick themselves. */
+        } else if ((isDashTurn(fighter) || !input.walk && !this.itemWorld.heavyHeld(fighter)) && this.stepRunPhase(fighter, input.x)) {
+          /* Dash, Turn, Run, TurnRun and RunBrake read the stick themselves. */
+        } else if (crouching && !freshDash && fighter.animation !== 'SquatRv') {
+          // ftCo_SquatWait_IASA → ftCo_SquatRv_CheckInput: without a fresh flick, leaving the crouch stands up.
+          this.change(fighter, 'crouch', 'SquatRv');
         } else if (input.x) {
-          const walking=!!input.walk||Math.abs(input.x)<this.content.common.dashThreshold||this.itemWorld.heavyHeld(fighter);
+          const walking=!!input.walk||Math.abs(input.x)<this.content.common.dashThreshold||this.itemWorld.heavyHeld(fighter)||(melee&&!freshDash);
           if(walking){if(fighter.state!=='walk')this.change(fighter,'walk','WalkSlow');}
           else if (fighter.state !== 'run') {
             // ftCo_Dash_Enter starts every dash at the full initial velocity; fighters without the Dash motion keep the stick-scaled Run start.
-            if (hasMeleeRun(fighter.content)) { fighter.facing = input.x > 0 ? 1 : -1; fighter.velocity.x = f32(fighter.facing * attrs.dashInitial); this.change(fighter, 'run', 'Dash'); }
+            // ftCo_Dash_CheckInput from Wait/Walk/Squat/Landing and attack IASAs: a fresh flick
+            // against the facing smash-turns first (ftCo_Turn_Enter_Smash keeps the facing), and
+            // Turn_IASA's just_turned dash then skips the initial-dash x44 lockout.
+            if (hasMeleeRun(fighter.content) && input.x * facingBefore < 0 && fighter.content.clips.has('Turn')
+              && fighter.link.sideTicks < (this.content.common.dashInputWindow ?? 2)) { fighter.facing = facingBefore; this.change(fighter, 'idle', 'Turn'); }
+            else if (hasMeleeRun(fighter.content)) { fighter.facing = input.x > 0 ? 1 : -1; fighter.velocity.x = f32(fighter.facing * attrs.dashInitial); this.change(fighter, 'run', 'Dash'); }
             else { fighter.velocity.x = f32(input.x * attrs.dashInitial); this.change(fighter, 'run', 'Run'); }
           }
         } else if (fighter.state === 'crouch') {
@@ -1283,7 +1420,9 @@ export class LocalMatch {
     // Hammer lock (PROTOTYPE): the idle pose swaps for the shared hammer-swing motion.
     if (fighter.itemStatus?.kind === 'hammer' && fighter.state === 'idle' && fighter.animation === 'Wait1' && fighter.content.clips.has('ItemHammerWait')) this.change(fighter, 'idle', 'ItemHammerWait');
     const currentFloor = this.content.stage.floors.find((floor) => floor.id === fighter.floor);
-    if (down && fighter.grounded && currentFloor?.oneWay && ['idle', 'walk', 'run', 'crouch'].includes(fighter.state)) {
+    // Drops come out of the squat path, so a Dash, Run, Turn or TurnRun keeps its footing.
+    const dropGate = fighter.grounded ? runPhaseGate(fighter, this.content.common) : null;
+    if (down && fighter.grounded && currentFloor?.oneWay && ['idle', 'walk', 'run', 'crouch'].includes(fighter.state) && (dropGate ? dropGate.crouch : true)) {
       this.logGroundLoss(fighter, currentFloor.id, 'drop-through', `drop-through one-way ${currentFloor.id}`);
       fighter.ignoreFloor = currentFloor.id; fighter.ignoreTicks = 12; fighter.grounded = false; fighter.floor = null;
       fighter.jumpsUsed = 1; this.change(fighter, 'fall', 'Fall');
@@ -1329,7 +1468,7 @@ export class LocalMatch {
     else if (specialStep.handled) { /* Special physics already ran through the selected helpers. */ }
     else if (fighter.grounded) {
       // ftCo_AppealS_Phys (ft_80084FA8) applies the same friction and TransN root motion as a grounded attack.
-      const rootMotion = (fighter.state === 'attack' || fighter.state === 'grab' || fighter.state === 'taunt') && this.attackRootMotion(fighter);
+      const rootMotion = (fighter.state === 'attack' || fighter.state === 'grab' || fighter.state === 'taunt' || fighter.state === 'tech' || fighter.state === 'downed') && this.attackRootMotion(fighter);
       // ft_80085030: grounded attack scripts move by their TransN track (dash attacks, lunging smashes); frozen charge frames add nothing.
       fighter.velocity.x = rootMotion ? this.content.physics.motion(fighter.slot, f32(rootDelta(fighter).z * fighter.animationRate), 0, fighter.facing).x
         : fighter.state==='walk'
@@ -1355,8 +1494,9 @@ export class LocalMatch {
       fighter.velocity = this.content.physics.customAir(fighter.slot, fighter.velocity, f32(attrs.gravity * ice.gravity), attrs.terminal, 0);
     } else if (!justJumped && fighter.itemStatus?.kind !== 'warp') {
       fighter.velocity = skullkidFloatVelocity(fighter, input, this.content.physics) ?? stepAirJump(fighter, input, this.content.physics) ?? this.content.physics.air(fighter.slot, fighter.velocity, controllable ? input.x * (fighter.state === 'helpless' ? fighter.specialMobility : 1) : 0, fighter.fastFall);
-      // ftPe_Float_Phys: the hover cancels gravity entirely while Fuwafuwa holds.
-      if (fighter.animation === 'Fuwafuwa') fighter.velocity.y = 0;
+      // ftPe_Float_Phys: the hover cancels gravity entirely while Fuwafuwa holds, and a
+      // float-cancel aerial keeps the cancel while its live float timer drains (peach.ts).
+      if (fighter.animation === 'Fuwafuwa' || (fighter.state === 'attack' && !fighter.peachFloat.available && fighter.peachFloat.timer > 0)) fighter.velocity.y = 0;
     }
     fighter.knockback = this.content.physics.decay(fighter.knockback, fighter.grounded, attrs.friction);
     // Warp Star ride: the WarpStarJump/WarpStarFall physics replace the air physics above.
@@ -1386,6 +1526,9 @@ export class LocalMatch {
     // PROTOTYPE (roguelike): speed boons/slows scale only the self-movement step
     // (`rogueMoveMul` is exactly 1 outside Rift Descent and for knockback/attacks/specials).
     const rogueMove = rogueMoveMul(fighter);
+    // The drop-through ignore only shields the downward pass: rising again (a jump, a
+    // launch) re-arms the floor at once so the platform cannot be tunneled on the way back.
+    if (fighter.ignoreFloor !== null && f32(fighter.velocity.y + fighter.knockback.y) > 0) { fighter.ignoreFloor = null; fighter.ignoreTicks = 0; }
     fighter.x = f32(fighter.x + f32((rogueMove === 1 ? fighter.velocity.x : f32(fighter.velocity.x * rogueMove)) + fighter.knockback.x));
     fighter.y = f32(fighter.y + f32(fighter.velocity.y + fighter.knockback.y));
     fighter.envContact = null;
@@ -1422,6 +1565,14 @@ export class LocalMatch {
         .sort((a, b) => Math.abs(floorY(a, fighter.x) - oldY) - Math.abs(floorY(b, fighter.x) - oldY))[0];
       // Where two solid floors overlap a few units apart (a terrain edge running under an
       // apron), the upper one is the walkable surface, as after the original's joint stitching.
+      // Curved rims (Yoshi's Story) break the chain map at sub-unit seams: before dropping
+      // support, accept any active floor continuing within a bodily step of the old height
+      // so a fast slide cannot pass into the hull. Real ledges stay ledges — nothing within
+      // reach still means airborne exactly as before.
+      if (!support) {
+        support = floors.filter((floor) => spans(floor) && Math.abs(floorY(floor, fighter.x) - oldY) < Math.max(follow, 1.2))
+          .sort((a, b) => Math.abs(floorY(a, fighter.x) - oldY) - Math.abs(floorY(b, fighter.x) - oldY))[0];
+      }
       if (support && !support.oneWay) {
         const upper = floors.filter((floor) => !floor.oneWay && floor !== support && between(fighter.x, floor.a[0], floor.b[0]) && floorY(floor, fighter.x) > floorY(support!, fighter.x) && floorY(floor, fighter.x) <= floorY(support!, fighter.x) + 2)
           .sort((a, b) => floorY(b, fighter.x) - floorY(a, fighter.x))[0];
@@ -1491,8 +1642,19 @@ export class LocalMatch {
         }
       }
     }
+    // PROTOTYPE unstick: the surface solver never pushes out an already-embedded body, so
+    // a fighter fully blocked against a wall for several frames (movement wanted, none
+    // delivered, airborne) is eased off the wall side instead of hanging there forever.
+    const contact = fighter.envContact as MatchFighter['envContact']; // blockSurfaces above may have set it
+    if (!fighter.grounded && contact?.wall && Math.abs(f32(fighter.velocity.x + fighter.knockback.x)) + Math.abs(f32(fighter.velocity.y + fighter.knockback.y)) > 0.2 && Math.abs(fighter.x - oldX) + Math.abs(fighter.y - oldY) < 0.01) fighter.wedged++;
+    else fighter.wedged = 0;
+    if (fighter.wedged >= 10) {
+      fighter.x = f32(fighter.x - (contact?.wall || fighter.facing));
+      fighter.y = f32(fighter.y + 0.5);
+      fighter.wedged = 0;
+    }
     syncSpecialAnimation(fighter);
-    this.combat.tryLedge(fighter,input,oldY);
+    this.combat.tryLedge(fighter,input,oldX,oldY);
     const blast = this.content.stage.blast;
     // ftCo_800C4724 sets x2222_b7: a Warp Star rider is never taken by the blast zones.
     const riding = fighter.itemStatus?.kind === 'warp';
@@ -1582,28 +1744,49 @@ export class LocalMatch {
   private hookHost():HookHost {
     return {content:this.content,poses:this.poses,events:this.events,change:(f,state,animation)=>this.change(f,state,animation),ledge:(f,id)=>this.combat.takeLedge(f,id)};
   }
+  /** ftCo_Dash_Enter: add initial velocity against existing momentum, otherwise replace it. */
+  private enterReverseDash(fighter: MatchFighter): void {
+    const initial = f32(fighter.facing * fighter.content.profile.attributes.dashInitial);
+    fighter.velocity.x = fighter.velocity.x * fighter.facing < 0 ? f32(fighter.velocity.x + initial) : initial;
+    this.change(fighter, 'run', 'Dash');
+    fighter.dashFromTurn = true;
+    // Native Dash entry consumes the tilt timer. A new neutral crossing/reversal rearms it.
+    fighter.link.sideTicks = 254;
+  }
+
   /** Original ground locomotion for fighters with Dash/RunBrake/TurnRun motions: ftCo_Dash_IASA,
    * ftCo_Run_IASA, ftCo_TurnRun_Anim and ftCo_RunBrake_Anim/IASA. Returns false outside those
    * phases, leaving the stick to the plain walk and dash start. */
   private stepRunPhase(fighter: MatchFighter, x: number): boolean {
     const content = fighter.content;
-    const phase = fighter.state === 'run' ? fighter.animation : fighter.state === 'idle' && fighter.animation === 'RunBrake' ? 'RunBrake' : '';
-    if ((phase !== 'Dash' && phase !== 'Run' && phase !== 'TurnRun' && phase !== 'RunBrake') || !hasMeleeRun(content)) return false;
+    const phase = fighter.state === 'run' ? fighter.animation : fighter.state === 'idle' && (fighter.animation === 'RunBrake' || fighter.animation === 'Turn') ? fighter.animation : '';
+    if ((phase !== 'Dash' && phase !== 'Run' && phase !== 'TurnRun' && phase !== 'RunBrake' && phase !== 'Turn') || !hasMeleeRun(content)) return false;
     const common = this.content.common, brake = common.runBrakeStick ?? RUN_BRAKE_STICK, turn = common.runTurnStick ?? RUN_TURN_STICK;
     const frame = fighter.animationFrame, ended = frame >= content.clips.get(phase)!.endFrame, forward = x * fighter.facing;
     // The script's cmd_vars[1] frame holds the motion (rate 0) until the momentum is spent.
     const holdAt = commandFrame(content, phase, 1), holding = holdAt !== null && frame >= holdAt && frame < holdAt + 1;
     switch (phase) {
       case 'Dash':
-        if (forward <= -common.dashThreshold) {
-          // ftCo_Dash_CheckInput → ftCo_Turn_Enter_Smash → ftCo_Dash_Enter: a smash back re-dashes the other
-          // way, adding the initial velocity to momentum still carried the old way.
-          fighter.facing = -fighter.facing;
-          const initial = f32(fighter.facing * content.profile.attributes.dashInitial);
-          fighter.velocity.x = fighter.velocity.x * fighter.facing < 0 ? f32(fighter.velocity.x + initial) : initial;
-          this.change(fighter, 'run', 'Dash');
+        if ((fighter.dashFromTurn || frame > (common.dashInitialLockout ?? 0))
+          && forward <= -common.dashThreshold && fighter.link.sideTicks < (common.dashInputWindow ?? 2)) {
+          // ftCo_Dash_CheckInput requires a fresh tilt (PlCo x40), not merely a held opposite stick.
+          if (content.clips.has('Turn')) {
+            // ftCo_Turn_Enter_Smash retains facing on entry. Dash IASA then reduces gr_vel
+            // by x54 before Turn_Phys applies standing friction (surface multiplier 1 here).
+            fighter.velocity.x = f32(fighter.velocity.x - f32(fighter.velocity.x * (common.dashExitFriction ?? 0)));
+            this.change(fighter, 'idle', 'Turn');
+          } else {
+            // Explicit fallback for custom/missing Turn clips, not native pivot behavior.
+            fighter.facing = -fighter.facing;
+            this.enterReverseDash(fighter);
+          }
         } else if (forward >= brake && commandValue(content, 'Dash', 0, frame)) this.change(fighter, 'run', 'Run'); // fn_800CA5F0
         else if (ended) this.change(fighter, 'idle', 'Wait1'); // ft_8008A2BC
+        return true;
+      case 'Turn':
+        // ftCo_Turn_IASA only follows the armed smash-turn with a dash on just_turned.
+        // A neutral release misses that one-frame follow-up and keeps the standing Turn.
+        if (fighter.stateFrame === 1 && forward >= common.dashThreshold) this.enterReverseDash(fighter);
         return true;
       case 'Run':
         if (forward <= turn) this.change(fighter, 'run', 'TurnRun'); // fn_800C9D40
@@ -1836,6 +2019,9 @@ export class LocalMatch {
     } else if (!damageOnly) {
       victim.knockback = { x: f32(Math.cos(result.angle) * result.speed * direction), y: f32(Math.sin(result.angle) * result.speed) };
       victim.velocity = { x: 0, y: 0 }; victim.hitstun = result.hitstun; victim.fastFall = false;
+      // A launch re-arms floor collision at once: the drop-through ignore window must not
+      // let a hit taken mid-drop tunnel the fighter back through the same platform.
+      victim.ignoreFloor = null; victim.ignoreTicks = 0;
       // ftCo_Damage_CalcAngle: a hitbox angle in the meteor range arms the meteor cancel; each launch forgets earlier buffered jumps.
       const recovery = this.content.common.hitstunRecovery ?? HITSTUN_RECOVERY;
       victim.hitstunInput.jumpAt = 0;
@@ -1844,6 +2030,8 @@ export class LocalMatch {
       this.change(victim, 'hitstun', result.knockback >= 80 ? 'DamageFlyN' : 'DamageN1');
       if (!projectile && attacker) attacker.hitlag = Math.max(attacker.hitlag, result.hitlag);
       victim.hitlag = Math.max(victim.hitlag, result.hitlag);
+      // ftCo_Damage: the launch magnitude feeds the crowd (un_803222EC + un_8032233C).
+      if (this.crowd && this.content.common.crowd) crowdHit(this.crowd, this.crowdHost(), this.crowdFighters(), attacker?.slot ?? null, victim.slot, result.knockback, result.angle);
     }
     this.events.push({ type: 'hit', player: victim.slot, x: point[0], y: point[1], damage: hit.damage, element: hit.element, severity: hit.soundSeverity, knockback:result.knockback, facing:direction, projectileKind: projectileKind ?? (projectile ? (damageOnly ? 'laser' : 'fireball') : undefined) });
     this.events.push({ type: 'sound', player: victim.slot, x: point[0], y: point[1], sound: hitSound(hit.soundKind, hit.soundSeverity), volume: 127, pan: 64 });
@@ -1911,6 +2099,15 @@ export class LocalMatch {
     fighter.envContact = { wall: first.kind === 'wall' ? Math.sign(fighter.x - oldX) || fighter.facing : 0, ceiling: first.kind === 'ceiling' };
     if (first.kind === 'wall') { fighter.velocity.x = 0; fighter.knockback.x = 0; }
     else { fighter.velocity.y = Math.min(0, fighter.velocity.y); fighter.knockback.y = Math.min(0, fighter.knockback.y); }
+    // PROTOTYPE wall tech (ftCo Passive_Wall): a live tech window on a hitstun wall
+    // contact absorbs the impact in place. No wall jump and no wall bounce on a miss.
+    if (first.kind === 'wall' && fighter.state === 'hitstun' && !fighter.trip && fighter.tech.ready > 0 && fighter.content.clips.has('PassiveWall')) {
+      fighter.tech.ready = 0; fighter.hitstun = 0;
+      fighter.velocity = { x: 0, y: 0 }; fighter.knockback = { x: 0, y: 0 };
+      fighter.hitstunInput.jumpAt = 0; fighter.hitstunInput.meteorLock = -1;
+      this.change(fighter, 'tech', 'PassiveWall');
+      fighter.invulnerable = Math.max(fighter.invulnerable, TECH_INVULN);
+    }
     // Slide (airborne only): project the movement onto the surface line — a fighter already on
     // a slanted line would otherwise re-cross it every frame and hang in the air — and keep it
     // when it crosses nothing. A grounded fighter pushing into a wall base simply stops.
@@ -2051,7 +2248,9 @@ export class LocalMatch {
     fighter.state = fighter.grounded ? 'idle' : 'fall';
     fighter.animation = fighter.grounded ? 'Wait1' : 'Fall';
     fighter.animationFrame = 0; fighter.animationRate = 1; fighter.animationEpoch++;
-    fighter.stateFrame = 0;
+    fighter.stateFrame = 0; fighter.dashFromTurn = false;
+    // ftcommon.c un_80322314: the fighter swap closes a running chant with a cheer.
+    if (this.crowd && this.content.common.crowd) crowdInterruptWithCheer(this.crowd, this.content.common.crowd);
     this.events.push({ type: 'transform', player: fighter.slot, x: fighter.x, y: fighter.y, kind });
   }
   /** Debug hot-swap (P key): replace one slot's fighter with another loaded
@@ -2461,8 +2660,33 @@ export class LocalMatch {
     fighter.y = floorY(floor, fighter.x); fighter.floor = floor.id; fighter.grounded = true; fighter.velocity.y = 0; fighter.knockback.y = 0;
     fighter.roySideBoostUsed = false;fighter.link.tetherUsed=false;fighter.glideUsed=false;bsonicOnLanding(fighter);skullkidOnLanding(fighter);tailsOnLanding(fighter);
     fighter.jumpsUsed = 0; fighter.fastFall = false; fighter.capeBoostUsed = false; fighter.tornadoUsed = false; fighter.popoHoverUsed = false; fighter.hammerBoostUsed = false; fighter.mewtwoBoostUsed = false; resetLinkDair(fighter);
+    customCharacter(fighter.content.profile.kind)?.landed?.(fighter);
     if (this.combat.land(fighter)) { retimeLinkLanding(fighter); return; }
     if (landSpecial(fighter, floor)) { retimeLinkLanding(fighter); return; }
+    // PROTOTYPE tech/ukemi on a tumble landing (ftCo Passive / DownBound): a live tech
+    // window turns the landing into Passive — sideways stick takes the rolls with their
+    // original root motion — otherwise the fighter bounces into the knockdown. Weak
+    // launches (DamageN*) keep sliding out of hitstun as before, and the banana trip
+    // keeps its own MissFoot flow. Fighters whose source lacks the clips land as before.
+    if (fighter.state === 'hitstun' && !fighter.trip && fighter.animation.startsWith('DamageFly')) {
+      const clips = fighter.content.clips;
+      const stickX = fighter.previous.x;
+      const roll = Math.abs(stickX) > 0.5 ? (stickX * fighter.facing > 0 ? 'PassiveStandF' : 'PassiveStandB') : null;
+      if (fighter.tech.ready > 0 && clips.has('Passive')) {
+        fighter.hitstun = 0; fighter.knockback = { x: 0, y: 0 };
+        fighter.hitstunInput.jumpAt = 0; fighter.hitstunInput.meteorLock = -1;
+        fighter.tech.ready = 0;
+        this.change(fighter, 'tech', roll && clips.has(roll) ? roll : 'Passive');
+        fighter.invulnerable = Math.max(fighter.invulnerable, TECH_INVULN);
+        return;
+      }
+      if (clips.has('DownBoundU')) {
+        fighter.hitstun = 0; fighter.knockback = { x: 0, y: 0 };
+        fighter.hitstunInput.jumpAt = 0; fighter.hitstunInput.meteorLock = -1;
+        this.change(fighter, 'downed', 'DownBoundU');
+        return;
+      }
+    }
     if (fighter.state === 'helpless') {
       fighter.landingFrames = Math.max(1, Math.ceil(fighter.specialLandingLag)); this.change(fighter, 'landing', 'Landing'); retimeLinkLanding(fighter); return;
     }
@@ -2529,6 +2753,7 @@ export class LocalMatch {
       onett: this.onett ? structuredClone(this.onett) : null,
       peachBill: this.peachBill ? structuredClone(this.peachBill) : null,
       muteCity: this.muteCity ? structuredClone(this.muteCity) : null,
+      crowd: this.crowd ? structuredClone(this.crowd) : null,
     };
   }
   /** Phase 4.2: same snapshot but the 128 KB WASM copy lands in a caller-owned
@@ -2559,6 +2784,7 @@ export class LocalMatch {
       onett: this.onett,
       peachBill: this.peachBill ? structuredClone(this.peachBill) : null,
       muteCity: this.muteCity ? structuredClone(this.muteCity) : null,
+      crowd: this.crowd,
     };
     const hash = sha256.create().update(new TextEncoder().encode(canonical(runtime))).update(this.content.physics.memoryView()).digest();
     return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -2612,6 +2838,7 @@ export class LocalMatch {
     this.onett = state.onett ? structuredClone(state.onett) : null;
     this.peachBill = (state as { peachBill?: unknown }).peachBill ? structuredClone((state as { peachBill: PeachBillRuntime }).peachBill) : null;
     this.muteCity = state.muteCity ? structuredClone(state.muteCity) : null;
+    this.crowd = state.crowd ? structuredClone(state.crowd) : null;
     // The active collision set is derived from the restored clock, never left stale.
     if (this.stadium && this.content.stadium) this.content.stage = stadiumStageAt(this.content.stadium, this.stadium);
     if (this.muteCity && this.content.muteCityData) {

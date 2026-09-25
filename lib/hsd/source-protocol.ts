@@ -158,7 +158,11 @@ export const MAX_ASSET_RESPONSE_BYTES = 16 * 1024 * 1024;
 /** One exposed asset. `sha256` (lowercase hex of the whole file) lets clients cache
  * and version each asset by content: unchanged files survive disc/identity changes
  * and whole-file downloads are verified. Optional for older servers. */
-export type SourceFile = DiscEntry & { sha256?: string };
+export type SourceFile = DiscEntry & { sha256?: string; /** Served asset name when it differs from `path` (a look layer). */ asset?: string };
+/** Optional cosmetic layer (see lib/hsd/looks.ts): alternate bytes for allowlisted assets, served
+ * as `look/<id>/<path>` and addressed in the look disc's own space (0..discSize). */
+export interface SourceLook { id: string; name: string; discSize: number; files: SourceFile[] }
+export const lookAssetName = (id: string, path: string): string => `look/${id}/${path}`;
 export interface SourceManifest {
   version: 1;
   mode: 'server';
@@ -171,6 +175,54 @@ export interface SourceManifest {
   /** Registered extension disc (ACE 2.0). Its assets are listed in `files` with offsets
    * rebased past the vanilla disc, so one flat reader address space serves both discs. */
   modded?: { id: string; executableSha1: string; discSize: number };
+  /** Host-vetted cosmetic layers a player may pick; the file table above stays the original disc. */
+  looks?: SourceLook[];
+}
+
+/** Every asset the host serves, by request name: the disc table plus each look's `look/<id>/…` files. */
+export function servedAssets(manifest: SourceManifest): SourceFile[] {
+  return [...manifest.files, ...(manifest.looks ?? []).flatMap((look) => look.files.map((file) => ({ ...file, path: lookAssetName(look.id, file.path) })))];
+}
+
+/** The manifest a session reads with look `id` applied: its files replace the same-named entries,
+ * rebased past the disc so one flat reader address space covers both, and fetched by look name.
+ * Identity, fingerprints and caches keep using the original manifest. */
+export function applyLook(manifest: SourceManifest, id: string | null): SourceManifest {
+  const look = id === null ? undefined : manifest.looks?.find((entry) => entry.id === id);
+  if (!look) return manifest;
+  const swaps = new Map(look.files.map((file) => [file.path, file]));
+  return {
+    ...manifest, discSize: manifest.discSize + look.discSize,
+    files: manifest.files.map((file) => {
+      const swap = swaps.get(file.path);
+      return swap ? { path: file.path, offset: manifest.discSize + swap.offset, size: swap.size, ...(swap.sha256 ? { sha256: swap.sha256 } : {}), asset: lookAssetName(look.id, file.path) } : file;
+    }),
+  };
+}
+
+function parseLooks(value: unknown, names: ReadonlySet<string>): SourceLook[] {
+  if (!Array.isArray(value) || value.length > 4) throw new Error('Invalid look list in server manifest.');
+  const ids = new Set<string>();
+  return value.map((entry: Partial<SourceLook> | null) => {
+    if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !/^[a-z0-9-]{1,32}$/u.test(entry.id) || ids.has(entry.id) ||
+        typeof entry.name !== 'string' || !entry.name || entry.name.length > 64 || !Number.isSafeInteger(entry.discSize) || entry.discSize! <= 0 ||
+        !Array.isArray(entry.files) || !entry.files.length || entry.files.length > names.size) {
+      throw new Error('Invalid look in server manifest.');
+    }
+    ids.add(entry.id);
+    const paths = new Set<string>();
+    for (const file of entry.files) {
+      // A look only replaces assets the disc table already exposes, and every file is content-addressed.
+      if (!file || !names.has(file.path) || paths.has(file.path) || file.asset !== undefined ||
+          !Number.isSafeInteger(file.offset) || !Number.isSafeInteger(file.size) || file.offset < 0 || file.size <= 0 ||
+          file.offset > entry.discSize! || file.size > entry.discSize! - file.offset ||
+          typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(file.sha256)) {
+        throw new Error('Invalid look asset entry in server manifest.');
+      }
+      paths.add(file.path);
+    }
+    return entry as SourceLook;
+  });
 }
 
 export function parseSourceManifest(value: unknown): SourceManifest {
@@ -192,7 +244,7 @@ export function parseSourceManifest(value: unknown): SourceManifest {
   const names = new Set<string>();
   for (const file of source.files) {
     const allowed = SERVER_ASSETS.some((name) => name === file?.path) || (modded !== undefined && ACE_ASSETS.some((name) => name === file?.path));
-    if (!file || !allowed || names.has(file.path) ||
+    if (!file || !allowed || names.has(file.path) || file.asset !== undefined ||
         !Number.isSafeInteger(file.offset) || !Number.isSafeInteger(file.size) || file.offset < 0 ||
         file.size <= 0 || file.offset > source.discSize! || file.size > source.discSize! - file.offset ||
         (file.sha256 !== undefined && (typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(file.sha256)))) {
@@ -201,6 +253,7 @@ export function parseSourceManifest(value: unknown): SourceManifest {
     names.add(file.path);
   }
   if (!VIEWER_ASSETS.every((name) => names.has(name))) throw new Error('Missing required viewer assets.');
+  if (source.looks !== undefined) source.looks = parseLooks(source.looks, names);
   // ACE fighters load optionally (FIGHTER_SPECS `optional`: the loader skips whatever the
   // extension disc does not supply, and chooser portraits gate on the loaded roster), so
   // in-progress declarations whose files are not on the disc yet stay absent instead of

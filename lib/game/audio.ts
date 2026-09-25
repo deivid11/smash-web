@@ -3,7 +3,9 @@
 export interface PcmSound { rate: number; channels: Int16Array[]; loop: boolean; loopStart: number }
 interface DspChannel { start: number; samples: number; coefs: number[]; h1: number; h2: number }
 export interface SoundDescriptor { id: number; rate: number; channels: DspChannel[]; loop: boolean; loopStart: number }
-export interface SoundCue { sample: number; delay: number; gain: number; pitch: number }
+/** `auxA`: the voice's aux-A (reverb) send fraction x26·x24[0]/65535 when the cue starts
+ * (see lib/game/ax-aux.ts); scripts always set it, direct samples have none. */
+export interface SoundCue { sample: number; delay: number; gain: number; pitch: number; auxA?: number }
 const nibbleSamples = (n: number) => Math.floor(n / 16) * 14 + (n % 16 > 0 ? n % 16 - 2 : 0);
 function range(offset: number, length: number, total: number): void {
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset > total || length > total - offset) throw new Error('Audio data range is invalid.');
@@ -95,9 +97,12 @@ export class SemTable {
     const index = base + local;
     if (index >= (this.banks[bank + 1] ?? this.scripts.length)) return [];
     let cursor = this.scripts[index]; if (cursor === undefined) return [];
-    let time = 0, gain = 1, pitch = 1, pending: number | null = null, loopCount = 0;
+    // Aux sends start from the channel defaults (AXDriver_804C5A20: zero for aux A) with a
+    // full x26 scale. Ops 18/19/21 (aux B) are ignored: AXDriver_804D603C = 2 locks aux B
+    // to the program's per-channel levels (lib/game/ax-aux.ts auxBSend).
+    let time = 0, gain = 1, pitch = 1, pending: number | null = null, loopCount = 0, auxA = 0, auxAScale = 255;
     const result: SoundCue[] = [];
-    const flush = () => { if (pending !== null) { result.push({ sample: pending, delay: time * 0.003, gain, pitch }); pending = null; } };
+    const flush = () => { if (pending !== null) { result.push({ sample: pending, delay: time * 0.003, gain, pitch, auxA: auxAScale * auxA / 65535 }); pending = null; } };
     for (let count = 0; count < 256; count++) {
       range(cursor, 4, this.view.byteLength); const word = this.view.getUint32(cursor), op = word >>> 24;
       const delay = op === 0 ? word & 0xffffff : [6,7,8,9,10,11,16,17,18,19].includes(op) ? (word >>> 8) & 0xffff : op === 12 || op === 13 ? (word >>> 16) & 255 : 0;
@@ -107,6 +112,9 @@ export class SemTable {
       else if (op === 7) gain = Math.max(0, Math.min(1, gain + ((word << 24) >> 24) / 255));
       else if (op === 12) pitch = 2 ** (((word << 16) >> 16) / 1200);
       else if (op === 13) pitch *= 2 ** (((word << 16) >> 16) / 1200);
+      else if (op === 16) auxA = word & 255;
+      else if (op === 17) auxA = Math.max(0, Math.min(255, auxA + ((word << 24) >> 24)));
+      else if (op === 20) auxAScale = word & 255;
       else if (op === 2) loopCount = word & 0xffff;
       else if (op === 3) { if (loopCount === 0) break; if (--loopCount > 0) { cursor -= (word & 0xffffff) * 4; continue; } }
       else if (op === 14 || op === 15) { flush(); break; }
@@ -129,6 +137,20 @@ export class GameSoundLibrary {
   cues(id: number): SoundCue[] {
     const table = this.extension && Math.floor(id / 10000) >= this.sem.bankCount ? this.extension : this.sem;
     return table.cues(id).filter((cue) => this.banks.some((bank) => cue.sample >= bank.base && cue.sample < bank.base + bank.sounds.length));
+  }
+  /** How many 60 Hz frames a SEM-scripted sound plays (its longest cue: delay plus the sample
+   * at the cue pitch), from the SSM headers alone. Deterministic, so simulation code can
+   * stand in for lbAudioAx_80023710 ("still playing?"); 0 when nothing resolves. */
+  durationFrames(id: number): number {
+    let seconds = 0;
+    for (const cue of this.cues(id)) {
+      const bank = this.banks.find((entry) => cue.sample >= entry.base && cue.sample < entry.base + entry.sounds.length);
+      const sound = bank?.sounds[cue.sample - bank.base];
+      if (!sound) continue;
+      seconds = Math.max(seconds, cue.delay + (sound.channels[0]?.samples ?? 0) / sound.rate / Math.max(0.125, Math.min(8, cue.pitch)));
+    }
+    // The epsilon keeps a last-ulp pow/division difference between engines from moving a frame.
+    return Math.max(0, Math.ceil(seconds * 60 - 1e-6));
   }
   sample(id: number): PcmSound | null {
     const cached = this.cache.get(id); if (cached) return cached;

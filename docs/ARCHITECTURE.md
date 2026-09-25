@@ -41,6 +41,10 @@ Local development tools
 
 The limited simulation supports two to eight fighters, including original Fox/Mario/Kirby data and optional local character packs. Local play remains two-player/leveled-CPU (see [CPU_AI.md](CPU_AI.md)); online rooms connect two to eight browsers through a central input relay and bounded rollback. It is not the complete Melee engine. Four-model display in the separate inspection viewer is still only a render stress test. See [docs/REACT_ONLINE.md](REACT_ONLINE.md) for implemented flow, architecture and limitations.
 
+### Cosmetic presentation options
+
+Options → Display → Visual effects holds presentation-only switches; none of them is read by the simulation, snapshots or hashes. Besides the screen-space chain (glow, ambient occlusion, colour grade, sharpening, vignette), **Texture upscale** (Off / 2× / 4×, `web/src/render/texture-upscale.ts`) resamples the original fighter and stage textures on the CPU when their GPU texture is created: a separable Catmull-Rom filter on premultiplied colour that follows each texture's clamp/repeat/mirror mode, clamped against ringing, then a range-clamped sharpen, uploaded with mipmaps and 4× anisotropy. It is a classic filter, not an HD texture pack: it smooths the blocky magnified look and invents no detail. Effect/particle textures are not upscaled (they are rebuilt per burst), images under 4 px or past a 2048 px result are left alone, and a changed setting reaches fighters and stages loaded afterwards.
+
 ### Privacy boundary
 
 Only [web/](../web/) and the required shared code/dependencies are available to the loopback development server. The LAN asset server serves the built browser code plus a read-only API for 21 explicitly allowed game/effect/audio resources. It does not expose the full disc, reference executable, arbitrary disc files, repository files, or machine configuration. See [docs/SERVER_SOURCE.md](SERVER_SOURCE.md).

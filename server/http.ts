@@ -7,7 +7,7 @@ import { brotliCompress, brotliCompressSync, gzip, gzipSync, constants as zlibCo
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { resolve, sep, extname } from 'node:path';
-import { MAX_ASSET_RESPONSE_BYTES } from '../lib/hsd/source-protocol.ts';
+import { MAX_ASSET_RESPONSE_BYTES, servedAssets } from '../lib/hsd/source-protocol.ts';
 import type { IsoSource } from './iso-source.ts';
 import { attachRoomServer } from './rooms.ts';
 import { PartyHub, attachPartyServer } from './party-hub.ts';
@@ -86,7 +86,8 @@ export async function createMeleeServer(options: Options) {
   const allowedHosts = new Set(['localhost', hostname().toLowerCase(), `${hostname().toLowerCase()}.local`, ...(options.allowedHosts ?? []).map((host) => host.toLowerCase())]);
   const source = options.source;
   const clientAce: ClientAcePolicy = options.clientAce ?? 'optional';
-  const files = new Map((source?.manifest.files ?? []).map((file) => [file.path, file]));
+  // The disc table plus each look's `look/<id>/…` files, by served name.
+  const files = new Map((source ? servedAssets(source.manifest) : []).map((file) => [file.path, file]));
   // Client-disc mode still answers the probe (the Android shell uses it for reachability),
   // but with a descriptor that carries no disc identity and no file table.
   const manifest = Buffer.from(JSON.stringify(source ? source.manifest : { version: 1, mode: 'client', ace: clientAce }));

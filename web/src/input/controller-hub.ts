@@ -131,7 +131,7 @@ export class ControllerHub {
   detect(): void {
     if (this.disposed) return;
     this.scan(this.now(), true);
-    if (this.status === 'waiting') { this.message = 'No controller exposed yet. Pair in OS Bluetooth settings, wake it, then press a button while this tab is focused.'; this.publish(true); }
+    if (this.status === 'waiting') { this.message = 'No controller exposed yet. Pair in OS Bluetooth settings, wake it, then press a button while this tab is focused.' + this.linuxHint(); this.publish(true); }
   }
   private now(): number { const value = this.environment.now?.() ?? 0; return Number.isFinite(value) ? value : 0; }
   scan(now = this.now(), force = false): void {
@@ -190,7 +190,7 @@ export class ControllerHub {
       } else if (!device.connected) { device.connected = true; device.armed = false; device.menuDown = pressed(pad.buttons[9]); device.latches = {}; device.calibration = null; changed = true; }
       device.pad = pad; seen.add(device.key);
       const menuDown = pressed(pad.buttons[9]);
-      if (menuDown && !device.menuDown && device.profile.standard && device.mapping && device.slot !== null && device.slot < this.localCount && !device.calibration && !ACTIONS.some(action => device.mapping!.buttons[action].includes(9))) menuRequested = true;
+      if (menuDown && !device.menuDown && (device.profile.standard || device.profile.rawLayout) && device.mapping && device.slot !== null && device.slot < this.localCount && !device.calibration && !ACTIONS.some(action => device.mapping!.buttons[action].includes(9))) menuRequested = true;
       device.menuDown = menuDown; // Separate from gameplay release/enable latches.
       if (device.calibration) this.sampleCalibration(device);
       this.sampleInput(device);
@@ -200,9 +200,16 @@ export class ControllerHub {
     }
     const previous = this.status;
     this.status = seen.size ? 'available' : 'waiting';
-    this.message = seen.size ? `${seen.size} controller${seen.size === 1 ? '' : 's'} exposed by this browser. Pairing and drivers are managed by your OS.` : 'No controller exposed yet. Press a controller button; use OS Bluetooth settings to pair first.';
+    this.message = seen.size ? `${seen.size} controller${seen.size === 1 ? '' : 's'} exposed by this browser. Pairing and drivers are managed by your OS.` : `No controller exposed yet. Press a controller button; use OS Bluetooth settings to pair first.${this.linuxHint()}`;
     this.publish(force || changed || previous !== this.status, now);
     if (menuRequested) this.onMenu?.();
+  }
+  /** Two Linux-only reasons a paired, working pad stays invisible to every page in Chromium:
+   * no joystick node (/dev/input/js*, joydev not attached), and — for Nintendo pads, which
+   * Chromium drives itself over raw HID instead of using the kernel's hid-nintendo device —
+   * a Bluetooth handshake that never completes (seen looping on its first step). */
+  private linuxHint(): string {
+    return /linux/i.test(this.environment.platform ?? '') && !/android|arm|aarch64/i.test(this.environment.platform ?? '') /* Android reports "Linux armv8l" */ ? ' On Linux, Chrome-based browsers need a /dev/input/js* node for the pad (sudo modprobe joydev), and they often cannot expose a Nintendo Switch pad over Bluetooth at all: a virtual-pad bridge (Steam Input, or a uinput re-publisher) that presents it as an Xbox pad works around that.' : '';
   }
   private sampleInput(device: Device): void {
     if (!this.enabled || !device.mapping || device.calibration || device.slot === null || device.slot >= this.localCount) { device.input = emptyControllerInput(); device.latches = {}; device.armed = false; return; }
@@ -280,7 +287,8 @@ export class ControllerHub {
       const button = (index: number) => pressed(raw.buttons[index]);
       const axis = (index: number, sign = 1) => { const value = raw.axes[index]; return Number.isFinite(value) && Math.abs(value!) > 0.2 ? value! * sign : 0; };
       const slot = device.slot !== null && device.slot < this.localCount ? device.slot : null;
-      const shared = { key: device.key, family: device.profile.family, slot, west: button(2), north: button(3), prevSeat: button(4), nextSeat: button(5), leftTrigger: button(6), rightTrigger: button(7), start: button(9), select: button(8) };
+      // A raw licensed Switch pad lists Y first (Y 0, B 1, A 2, X 3): West is 0 there, and 2 is its Attack.
+      const shared = { key: device.key, family: device.profile.family, slot, west: button(device.profile.rawLayout === 'licensed' ? 0 : 2), north: button(3), prevSeat: button(4), nextSeat: button(5), leftTrigger: button(6), rightTrigger: button(7), start: button(9), select: button(8) };
       if (device.mapping) {
         let input;
         try { input = mappedInput(raw, device.mapping); } catch { continue; }

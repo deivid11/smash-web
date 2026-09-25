@@ -1,4 +1,4 @@
-import { parseSourceManifest, type SourceFile, type SourceManifest } from './source-protocol.ts';
+import { parseSourceManifest, servedAssets, type SourceFile, type SourceManifest } from './source-protocol.ts';
 
 export type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 /** Persistent byte store for exposed asset ranges. Keys are namespaced: `content/<sha256>…`
@@ -79,7 +79,7 @@ export function coalescingFetcher(next: Fetcher, options: { limit?: number; reta
   let sizes = new Map<string, number>();
   const whole = new Map<string, Promise<Uint8Array>>();
   const settled = new Set<string>();
-  const learner = manifestLearner(next, manifest => { sizes = new Map(manifest.files.map(file => [file.path, file.size])); whole.clear(); settled.clear(); });
+  const learner = manifestLearner(next, manifest => { sizes = new Map(servedAssets(manifest).map(file => [file.path, file.size])); whole.clear(); settled.clear(); });
   return async (url, init) => {
     const request = assetRequest(url, init), size = request ? sizes.get(request.path) : undefined;
     if (!request || size === undefined || size > limit || request.end >= size) return learner(url, init);
@@ -127,7 +127,7 @@ export function offlineWholeFileFetcher(next: Fetcher, options: { retain?: numbe
   const retain = options.retain ?? 8;
   let sizes = new Map<string, number>();
   const whole = new Map<string, Promise<Uint8Array>>();
-  const learner = manifestLearner(next, manifest => { sizes = new Map(manifest.files.map(file => [file.path, file.size])); whole.clear(); });
+  const learner = manifestLearner(next, manifest => { sizes = new Map(servedAssets(manifest).map(file => [file.path, file.size])); whole.clear(); });
   return async (url, init) => {
     const request = assetRequest(url, init), size = request ? sizes.get(request.path) : undefined;
     if (!request || size === undefined || request.end >= size) return learner(url, init);
@@ -208,12 +208,13 @@ export async function loadCachedManifest(storage?: CacheStorage | undefined): Pr
 export function cachingFetcher(next: Fetcher, store: AssetStore | null, seed?: SourceManifest | null): Fetcher {
   if (!store) return next;
   let identity: string | null = seed ? manifestIdentity(seed) : null;
-  let files = new Map<string, SourceFile>(seed ? seed.files.map(file => [file.path, file]) : []);
+  let files = new Map<string, SourceFile>(seed ? servedAssets(seed).map(file => [file.path, file]) : []);
   const learner = manifestLearner(next, manifest => {
-    identity = manifestIdentity(manifest); files = new Map(manifest.files.map(file => [file.path, file]));
+    // Look files are cached by their served names and content hashes, so switching looks keeps both.
+    identity = manifestIdentity(manifest); files = new Map(servedAssets(manifest).map(file => [file.path, file]));
     // Remember the manifest itself: offline boot re-seeds from it (see loadCachedManifest).
     void saveCachedManifest(manifest);
-    const hashes = new Set(manifest.files.flatMap(file => file.sha256 ? [file.sha256] : []));
+    const hashes = new Set(servedAssets(manifest).flatMap(file => file.sha256 ? [file.sha256] : []));
     if (hashes.size) void store.prune?.(hashes, identity).catch(() => undefined);
   });
   return async (url, init) => {

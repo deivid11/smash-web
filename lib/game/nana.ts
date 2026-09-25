@@ -63,6 +63,8 @@ const NANA_WAIT: ReadonlySet<FighterState> = new Set([
   'grab', 'holding', 'captured', 'throw', 'grab-release',
   'ledge', 'ledge-action', 'ledge-jump', 'tether',
   'ko', 'respawn', 'shield-break', 'dizzy', 'bury',
+  // Popo's knockdown/tech is his alone: Nana keeps her own footing and idles.
+  'downed', 'tech',
 ]);
 /** True when Nana plays Popo's animation/frame; false when she idles (Wait1/Fall). */
 export function nanaMirrorsLeader(state: FighterState): boolean {

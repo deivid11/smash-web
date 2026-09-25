@@ -1,7 +1,8 @@
 import type { DiscReader } from '../disc.ts';
 import { HsdAssetSession } from './session.ts';
-import { MAX_ASSET_RESPONSE_BYTES, parseSourceManifest, type SourceFile, type SourceManifest } from './source-protocol.ts';
+import { MAX_ASSET_RESPONSE_BYTES, applyLook, parseSourceManifest, type SourceFile, type SourceManifest } from './source-protocol.ts';
 import { WHOLE_FILE_LIMIT, assetCacheKeys, cacheStorageStore, loadCachedManifest, manifestIdentity, type AssetStore } from './asset-fetch.ts';
+import { lookModelPatch } from './looks.ts';
 
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -16,7 +17,7 @@ export function serverDiscReader(manifest: SourceManifest, fetcher: Fetcher = fe
       if (!file) throw new Error('The requested bytes are not part of an exposed viewer asset.');
       if (length === 0) return new Uint8Array();
       const start = offset - file.offset, end = start + length - 1;
-      const request = () => fetcher(`/api/assets/${encodeURIComponent(file.path)}`, {
+      const request = () => fetcher(`/api/assets/${encodeURIComponent(file.asset ?? file.path)}`, {
         headers: { Range: `bytes=${start}-${end}` }, cache: 'no-store', credentials: 'same-origin',
       });
       // The server bounds concurrent ISO reads and answers 503 when busy: back off and retry.
@@ -48,8 +49,9 @@ export function serverDiscReader(manifest: SourceManifest, fetcher: Fetcher = fe
  * each sub-range the reader asked for; those are sliced from that entry (kept in a
  * small LRU so one file is not re-read per range). Exact range keys (larger files,
  * or transports that cache below the slicing layer) are tried as well. */
-export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, options: { wholeFileLimit?: number; retain?: number; missHint?: string } = {}): DiscReader {
-  const identity = manifestIdentity(manifest);
+export function cachedDiscReader(manifest: SourceManifest, store: AssetStore, options: { wholeFileLimit?: number; retain?: number; missHint?: string; identity?: string } = {}): DiscReader {
+  // A look-applied manifest keeps the original disc's identity (its extended size is not an identity).
+  const identity = options.identity ?? manifestIdentity(manifest);
   const limit = options.wholeFileLimit ?? WHOLE_FILE_LIMIT, retain = options.retain ?? 16;
   const whole = new Map<string, Promise<Uint8Array | undefined>>();
   // Content key first (hashed manifests), then the pre-hash identity key.
@@ -114,12 +116,28 @@ export async function storedCopyGaps(manifest: SourceManifest, store: AssetStore
   return gaps;
 }
 
-export async function connectCachedSource(options: { wholeFileLimit?: number; missHint?: string } = {}): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
+/** Chooses a look (or null) from the manifest's offered looks; see web/src/play/look-setting.ts. */
+export type LookChooser = (manifest: SourceManifest) => string | null;
+/** A connected source: `manifest` is always the original disc table (identity, fingerprints,
+ * caches); the session reads through `look` when one was chosen and offered. */
+export interface ConnectedSource { session: HsdAssetSession; manifest: SourceManifest; look: string | null }
+/** Only looks this build pins (lib/hsd/looks.ts) are applied: their neutralizing patch must be known. */
+function chosenLook(manifest: SourceManifest, choose?: LookChooser): string | null {
+  const id = choose?.(manifest) ?? null;
+  return id !== null && manifest.looks?.some((look) => look.id === id) && lookModelPatch(id) ? id : null;
+}
+/** A session over `manifest` with look `look` applied (or the plain disc). */
+function lookSession(reader: DiscReader, manifest: SourceManifest, look: string | null): HsdAssetSession {
+  return new HsdAssetSession(reader, manifest, look === null ? undefined : lookModelPatch(look));
+}
+
+export async function connectCachedSource(options: { wholeFileLimit?: number; missHint?: string; look?: LookChooser } = {}): Promise<ConnectedSource | null> {
   const store = cacheStorageStore();
   if (!store) return null;
   const manifest = await loadCachedManifest();
   if (!manifest) return null;
-  return { session: new HsdAssetSession(cachedDiscReader(manifest, store, options), manifest), manifest };
+  const look = chosenLook(manifest, options.look), read = applyLook(manifest, look);
+  return { session: lookSession(cachedDiscReader(read, store, { ...options, identity: manifestIdentity(manifest) }), read, look), manifest, look };
 }
 
 /** Options for the source handshake. The manifest fetch is the one request boot
@@ -130,12 +148,14 @@ export interface SourceConnectOptions {
   timeoutMs?: number;
   /** Extra attempts after the first (default 2). */
   retries?: number;
+  /** Picks one of the manifest's cosmetic looks for this session (default: none). */
+  look?: LookChooser;
 }
 const DEFAULT_SOURCE_TIMEOUT_MS = 15000;
 const DEFAULT_SOURCE_RETRIES = 2;
 
 /** A static-only build has no API and continues to offer the local file picker. */
-export async function connectServerSource(fetcher: Fetcher = fetch, signal?: AbortSignal, options: SourceConnectOptions = {}): Promise<{ session: HsdAssetSession; manifest: SourceManifest } | null> {
+export async function connectServerSource(fetcher: Fetcher = fetch, signal?: AbortSignal, options: SourceConnectOptions = {}): Promise<ConnectedSource | null> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_SOURCE_TIMEOUT_MS;
   const retries = options.retries ?? DEFAULT_SOURCE_RETRIES;
   let lastError: unknown = null;
@@ -173,7 +193,8 @@ export async function connectServerSource(fetcher: Fetcher = fetch, signal?: Abo
     if (!response.ok) throw new Error(`The server disc is unavailable (HTTP ${response.status}).`);
     try {
       const manifest = parseSourceManifest(await response.json());
-      return { session: new HsdAssetSession(serverDiscReader(manifest, fetcher), manifest), manifest };
+      const look = chosenLook(manifest, options.look), read = applyLook(manifest, look);
+      return { session: lookSession(serverDiscReader(read, fetcher), read, look), manifest, look };
     } catch (error) {
       // Name the manifest as the culprit (with its own message) instead of a
       // generic load failure: mismatched/partial manifests are otherwise silent.

@@ -120,12 +120,18 @@ export interface SpecialRuntime {
   copyCharge?: number; copySwings?: number; copyFull?: boolean;
   startedAir: boolean; aim: number; driftLimit: number; lastFrame: number; serial: number;
 }
-export type ProjectileKind = 'tails-shot'|'diddy-banana'|'tjolt'|'thunder'|'laser'|'fireball'|'cutter'|'charge'|'missile'|'super-missile'|'bomb'|'arrow'|'boomerang'|'link-bomb'|'shadow-ball'|'disable'|'pk-fire'|'pk-fire-pillar'|'pk-flash'|'pk-thunder'|'koopa-flame'|'turnip'|'toad-spore'|'peach-blast'|'buster'|'buster-charged'|'iceball'|'raichu-jolt'|'lizardon-flame'|'lizardon-rock'|'lizardon-burst'|'wolf-laser'|'diddy-peanut'|'dedede-gordo'|'blastoise-water'|'blastoise-spray'|'lucas-freeze'|'lucas-fire'|'metal-shot'|'ninten-pellet'|'fay-laser'|'fay-sniper'|'chunli-kiko'|'ice-shot'|'blizzard'|'dins-fire'|'needles'|'chain-whip'|'sausage'|'yoshi-egg'|'yoshi-star'|'sonic-spring'|'bsonic-spring'|'skull-bomb';
+export type ProjectileKind = 'tails-shot'|'diddy-banana'|'tjolt'|'thunder'|'laser'|'fireball'|'cutter'|'charge'|'missile'|'super-missile'|'bomb'|'arrow'|'boomerang'|'link-bomb'|'shadow-ball'|'disable'|'pk-fire'|'pk-fire-pillar'|'pk-flash'|'pk-thunder'|'koopa-flame'|'turnip'|'toad-spore'|'peach-blast'|'buster'|'buster-charged'|'iceball'|'raichu-jolt'|'lizardon-flame'|'lizardon-rock'|'lizardon-burst'|'wolf-laser'|'diddy-peanut'|'dedede-gordo'|'blastoise-water'|'blastoise-spray'|'lucas-freeze'|'lucas-fire'|'metal-shot'|'ninten-pellet'|'fay-laser'|'fay-sniper'|'chunli-kiko'|'ice-shot'|'blizzard'|'dins-fire'|'needles'|'chain-whip'|'sausage'|'yoshi-egg'|'yoshi-star'|'sonic-spring'|'bsonic-spring'|'skull-bomb'|'custom-shot';
+/** Custom-pack straight shot (lib/custom): the pack's own article plus per-shot tuning. Plain
+ * finite numbers only, so queued intents and live shots stay snapshot/hash friendly. `hits` > 1
+ * re-arms the shot `rehit` frames after each contact; `final` overrides the last contact. */
+export interface CustomShotIntent { speed: number; angle: number; life: number; hits: number; rehit: number; style: number;
+  hit: { damage: number; angle: number; growth: number; base: number; weightSet: number; radius: number; element: number; soundKind: number; soundSeverity: number; shieldDamage?: number };
+  final?: { damage: number; angle: number; growth: number; base: number; weightSet: number; element: number } }
 /** `at` pins the spawn point when the owner moves before shots spawn (Sonic's spring is left
  * where he stood, not where the launch carried him). */
 /** `dropped`: the same frame's Coll ended the motion before the end-of-frame accessory callback
  * that fires the shot ran (ChangeMotionState clears accessory4_cb — Metal Sonic's neutral shot). */
-export interface ShotIntent { player: number; kind: ProjectileKind; copy?: boolean; charge?: number; rawCharge?: number; aim?: number; fast?: boolean; variant?: number; at?: [number, number]; effect?: number; dropped?: boolean }
+export interface ShotIntent { player: number; kind: ProjectileKind; copy?: boolean; charge?: number; rawCharge?: number; aim?: number; fast?: boolean; variant?: number; at?: [number, number]; effect?: number; dropped?: boolean; custom?: CustomShotIntent }
 /** `roll` is ftCo_8009917C leaving a charging special straight into EscapeF/EscapeB: the step
  * has already finished the special, and the host hands the motion to the combat controller. */
 export interface SpecialStep { handled: boolean; shots: ShotIntent[]; sounds: number[]; transform?: FighterKind; roll?: string;
@@ -265,6 +271,7 @@ export function finishSpecial(f: MatchFighter, helpless=false, lag=0, mobility=1
 }
 export function beginSpecial(f: MatchFighter, direction: SpecialDirection, input: PlayerInput, common?: CommonGameplayData): void {
   const p=f.content.specials.parameters, air=!f.grounded;
+  if(p.kind==='custom'&&requireCustomCharacter(f.content.profile.kind).specials.allowed?.(f,direction,input)===false)return;
   // Donkey Kong has no aerial Hand Slap state (ftDk_MS_SpecialLw* are ground-only).
   if(p.kind==='Dk'&&direction==='down'&&air)return;
   // SpecialAirSStart_Enter (PlKx): one glide per airtime (ft_var9, cleared by OnLanding).
@@ -442,10 +449,13 @@ export function landSpecial(f:MatchFighter,floor?:Floor):boolean {
   if(p.kind==='Ys')return landYoshiSpecial(f,()=>finishSpecial(f));
   if(p.kind==='custom')return requireCustomCharacter(f.content.profile.kind).specials.land(f,(helpless,lag,mobility)=>finishSpecial(f,helpless,lag,mobility));
   if((p.kind==='Fx'||p.kind==='Fc')&&s.direction==='up') {
-    // ftFx_SpecialHiHold(Air)_Anim charges into the launch; an airborne travel
-    // slides until its frames run out (prototype: landing cuts straight to the
-    // ground end); the air end lands into SpecialHiLanding from frame 13.
-    if(s.phase==='travel'){phase(f,'end');return true;}
+    // ftFx_SpecialHiHold(Air)_Anim charges into the launch. A DESCENDING travel
+    // arriving on a floor cuts to the ground end (SpecialHiLanding), but a launch
+    // skimming along the floor (grounded horizontal aim) keeps flying with the
+    // flight hitbox live, like the original's ground flight state — it used to
+    // collapse into the hitbox-less landing slide on its first frame and pass
+    // through shields without the 14% hit. The air end lands from frame 13.
+    if(s.phase==='travel'){if(f.velocity.y<-0.01)phase(f,'end');return true;}
     if(s.phase==='end'&&f.animation==='SpecialHiFall'){phase(f,'end');f.animationFrame=13;return true;}
     f.animation=phaseName(f,s.direction,s.phase);f.attackName=f.animation;return true;
   }

@@ -32,6 +32,7 @@ Configuration:
 | `SMASH_CLIENT_ACE` | Client-disc mode only. `optional` (default), `required`, or `off`: whether players may, must, or cannot add the ACE 2.0 extension ISO. |
 | `MELEE_ISO` | Explicit server ISO path. Relative paths resolve from the project root. |
 | `MELEE_ACE_ISO` | Optional ACE 2.0 extension ISO for server mode. Unset = original roster only. |
+| `MELEE_LOOK_ISO` | Optional cosmetic look disc for server mode (currently Animelee Complete Edition); see [Cosmetic looks](#cosmetic-looks). `MELEE_ISO` must then be the original disc. |
 | `SMASH_HOST` | Bind address, default `0.0.0.0`. |
 | `SMASH_PORT` | Port, default `5273`. |
 | `SMASH_ALLOWED_HOSTS` | Additional permitted DNS hostnames, comma-separated. Literal IP addresses, localhost, and this machine's hostname are accepted by default. |
@@ -51,6 +52,16 @@ On that marker the play page holds boot on a disc gate ([web/src/play/disc-gate.
 Players who downloaded game data while the host still ran in `server` mode are **not** asked for a disc: the play page boots from that stored data first (the same cache-only reader as offline play), and opens the disc gate only when nothing usable is stored. Stored data is partial by nature — only the fighters and stages that player had downloaded load; the rest report a load failure. `/play.html?disc` forces the gate so such a player can switch to their own ISO. Clearing site data removes the stored copy and brings the gate back.
 
 The local manifest lists the same names, order, and rebased extension offsets as the server's, so the content fingerprint equals that of a server streaming the same discs. Online rooms therefore match only players who loaded the same disc set (original-only and original + ACE do not mix). The bundled Android/TV shell has no disc picker and needs a `server` host.
+
+## Cosmetic looks
+
+A host may offer a player-selectable **look**: alternate bytes for some allowlisted assets, served on top of the verified original disc. The only look this build knows is Animelee Complete Edition, a third-party cel-shaded mod applied to NTSC 1.02 (identical executable). [lib/hsd/looks.ts](../lib/hsd/looks.ts) pins 137 files as `[original SHA-256, Animelee SHA-256]`: stages, costumes, `EfCoData.dat`, the fighter files it rebuilt for article/hat models, and two Kirby hat archives.
+
+- **Server.** With `MELEE_LOOK_ISO` the server opens that disc read-only and offers only files whose original *and* look bytes match their pins. It lists them under `looks` in `/api/source`, in the look disc's own address space, and serves them as `/api/assets/look/<id>/<name>`. The disc table (`files`) stays the original's. A look disc that matches no pinned file stops startup.
+- **Client.** Options → Display → LOOK stores the choice per browser (`localStorage` key `smash-web.look`). With nothing stored, the host's first look is used; `original` keeps the disc art. A change applies on the next page load, and portraits are cached separately per look. Offline boots reuse the stored choice; look files are cached by their own content hashes, so switching back and forth downloads nothing twice.
+- **Cosmetic only.** The room fingerprint is computed from the original disc table, so players with either look share rooms. The simulation must therefore read identical data. `tests/unit/look-real.test.ts` (needs `MELEE_DISC_PATH` and `MELEE_LOOK_DISC_PATH`) checks the pins and every parsed core/fighter/stage table; only render-model skeletons of articles, hats and the stage model may differ. It also replays CPU matches on the five restyled stages and requires identical state hashes with and without the look.
+- **Known adjustments.** Animelee's rebuilt costumes drop the CLASSICAL_SCALE joint flag, which changes how scale inherits and so moves hurtboxes. The client restores the original disc's bit per joint (pinned masks; `lookModelPatch`) and keeps Animelee's meshes, materials and skinning flags. Poses can therefore differ slightly from Animelee's own renders when an animation scales a joint. `PlNsBu.dat` and `PlNsGr.dat` are excluded (their skeletons drift by about 4e-6). ACE fighters keep their own art.
+- **Limitations.** This is not the Dolphin HD texture pack, and it is not equivalent to Animelee on Dolphin. Client-disc hosts (`SMASH_DISC_SOURCE=client`) offer no looks. Serving the mod redistributes Nintendo-derived data in the same way as the base assets, and remains the host operator's decision.
 
 ## Read-only API
 

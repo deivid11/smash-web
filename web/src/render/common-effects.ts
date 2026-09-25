@@ -27,7 +27,12 @@ export class CommonEffects {
    * lives in EfKpData, not the common bank). Keyed so sprite ids from different players never
    * collide. */
   private extra=new Map<string,{player:ParticlePlayer;bank:ParticleBank}>();
-  constructor(private scene:THREE.Scene,private data:CommonEffectsData|undefined,private rigs:GameRigs,private camera:THREE.Camera){if(data)this.player=new ParticlePlayer(data.particles);}
+  constructor(private scene:THREE.Scene,private data:CommonEffectsData|undefined,private rigs:GameRigs,private camera:THREE.Camera){
+    if(data)this.player=new ParticlePlayer(data.particles);
+    // Without the common bank (EfCoData/PlCo missing or unparsed) every hit spark, flash
+    // and dust silently disappears while the match still plays; say so once instead.
+    else console.warn('CommonEffects: no common effect bank loaded — hit sparks, flashes and dust are disabled for this match (check EfCoData.dat/PlCo.dat in the disc source).');
+  }
   /** efLib_CreateGenerator against a fighter's own bank. `origin` may be a callback so the
    * particles ride a moving article, as the original's attached generators do. */
   spawnFrom(bank:ParticleBank,key:string,generator:number,origin:Parameters<ParticlePlayer['spawn']>[1],facing?:number,scale=1,attached=false):void {

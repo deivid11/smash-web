@@ -139,8 +139,13 @@ Modify that state only from simulation hooks. Do not keep cooldowns, counters, R
 - Optional `hits(fighter, hits)` adjusts attack hits.
 - Optional `counter(attacker, victim, hit)` returns simulation events or `null`. Normal confirmed-event handling prevents duplicate online audio/events during rollback.
 - Optional `status(fighter)` is a **read-only** HUD query.
+- Optional `specials.allowed(fighter, direction, input)` is a **read-only entry gate**, evaluated before a special changes facing, velocity, state or serial. Use snapshot-owned custom state for once-per-airtime budgets; returning false leaves entry untouched.
+- Optional `landed(fighter)` runs on physical floor contact before landing-state dispatch, including contacts that leave a special or enter a combat landing. It can reset a custom airtime budget. KO/hot-swap still use `initialState()`; merely changing from a special to fall or taking damage does not count as landing.
+- Optional `aerialAttack(fighter, input)` selects an authored aerial clip at the ordinary attack input gate. Return `null` to retain shared selection. It must be deterministic, read-only, and return a clip present in this fighter's content. These optional v1 hooks do not replace the simulation loop or change built-in fighters.
+- Optional `input(fighter, input, frame)` runs every simulation frame (hitlag included) before state dispatch. It may only update snapshot-owned `customState`, for example a short stick history for fighting-game motion commands. `frame.shots` is the number of this fighter's live custom shots.
+- Optional `cancel(fighter, input)` is a **read-only** gate evaluated while the fighter is in one of its own normal attacks. Returning a direction starts that special through the ordinary `allowed`/`begin` path (for authored hit-confirm cancels); `null` keeps the attack.
 
-V1 supports the existing shot/event types, not arbitrary new item/projectile engines or a custom sampled hurtbox ABI. Extending those contracts requires engine work and protocol/rollback tests. Avoid pretending a new projectile is an existing one merely to obtain a renderer.
+V1 supports the existing shot/event types plus one generic custom projectile, not arbitrary new item/projectile engines or a custom sampled hurtbox ABI. A special step may push `{ kind: 'custom-shot', at, custom }`: the engine spawns the pack's own `articles.projectile` at `at`, with the per-shot speed, angle, lifetime and hit tuning from `custom`, flying straight. `custom.hits` > 1 re-arms the shot `custom.rehit` frames after each contact and `custom.final` overrides the last contact; `custom.style` is an opaque id for the pack's own effects renderer. It is absorbed, reflected and snapshotted like other energy shots. Anything beyond that still requires engine work and protocol/rollback tests. Avoid pretending a new projectile is an existing one merely to obtain a renderer.
 
 ## 6. Presentation, sprites and resources
 

@@ -21,7 +21,7 @@ describe('original-format DSP/SSM audio',()=>{
 });
 describe('bounded SEM cue extraction',()=>{
  const table=()=>{const b=new Uint8Array(36),v=new DataView(b.buffer);v.setUint32(8,1);v.setUint32(16,1);v.setUint32(20,24);v.setUint32(24,0x01000064);v.setUint32(28,0x060000ff);v.setUint32(32,0x0e000000);return b;};
- it('resolves a logical sound id to its original sample',()=>expect(new SemTable(table()).cues(0)).toEqual([{sample:100,delay:0,gain:1,pitch:1}]));
+ it('resolves a logical sound id to its original sample',()=>expect(new SemTable(table()).cues(0)).toEqual([{sample:100,delay:0,gain:1,pitch:1,auxA:0}]));
  it('returns no cue for unavailable/sentinel ids',()=>{const s=new SemTable(table());expect(s.cues(10000)).toEqual([]);expect(s.cues(-1)).toEqual([]);});
  it('rejects out-of-range script pointers',()=>{const b=table();new DataView(b.buffer).setUint32(20,99999);expect(()=>new SemTable(b)).toThrow('range');});
 });

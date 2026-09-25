@@ -128,6 +128,11 @@ export interface GameContent {
   fighters: [FighterContent, FighterContent, ...FighterContent[]]; roster: Map<FighterKind,FighterContent>; physics: MeleePhysics; sound: GameSoundLibrary;
 }
 const TRIP_MOTIONS = ['MissFoot', 'DownBoundU', 'DownStandU'] as const;
+/** Tech (ukemi) and knockdown motions: tech in place/rolls, wall tech, the knockdown
+ * wait and its getup attack/rolls. Optional like the trip set — a fighter whose source
+ * lacks them simply lands out of a tumble the old way. `DownFowardU` is the original's
+ * own spelling. */
+const TECH_MOTIONS = ['Passive', 'PassiveStandF', 'PassiveStandB', 'PassiveWall', 'DownWaitU', 'DownAttackU', 'DownFowardU', 'DownBackU'] as const;
 const BASE_MOTIONS = ['Wait1', 'WalkSlow', 'WalkMiddle', 'WalkFast', 'Run', 'Landing', 'JumpF', 'Fall', 'DamageN1', 'DamageFlyN', 'LandingAirN', 'LandingAirF', 'LandingAirLw', 'Squat', 'SquatRv'] as const;
 
 /** One explicit descriptor per original fighter: no shared fallbacks between characters. */
@@ -479,7 +484,7 @@ async function loadOriginalFighter(session: HsdAssetSession, spec: OriginalFight
     return { key: name, action };
   };
   for (const name of new Set([...BASE_MOTIONS, 'LightGet', ...LIGHT_ITEM_MOTIONS, ...spec.extraClips, ...Object.values(spec.moves), ...COMBAT_MOTIONS])) if (!spec.keyed.some(entry => entry.key === name) && !spec.unsupportedActions?.includes(name)) entries.push(byName(name));
-  // Dash/RunBrake/TurnRun are optional: a fighter without all of them keeps the plain Run (lib/game/locomotion.ts).
+  // Optional locomotion clips: Dash/RunBrake/TurnRun enable native-style running; Turn adds the smash-turn pivot (lib/game/locomotion.ts).
   for (const name of RUN_MOTIONS) {
     const action = table.find((entry) => entry.name === name);
     if (action && !entries.some((entry) => entry.key === name) && !spec.keyed.some((entry) => entry.key === name)) entries.push({ key: name, action, optional: true });
@@ -487,6 +492,11 @@ async function loadOriginalFighter(session: HsdAssetSession, spec: OriginalFight
   // PlDd's banana trips whoever owns a MissFoot animation (Trip_Check → Trip_Enter → DownBoundU);
   // DownStandU stands them back up. Optional: a fighter without MissFoot simply cannot trip.
   for (const name of TRIP_MOTIONS) {
+    const action = table.find((entry) => entry.name === name);
+    if (action && !entries.some((entry) => entry.key === name) && !spec.keyed.some((entry) => entry.key === name)) entries.push({ key: name, action, optional: true });
+  }
+  // Tech/knockdown motions (lib/game/match.ts tech + downed states). Optional like trips.
+  for (const name of TECH_MOTIONS) {
     const action = table.find((entry) => entry.name === name);
     if (action && !entries.some((entry) => entry.key === name) && !spec.keyed.some((entry) => entry.key === name)) entries.push({ key: name, action, optional: true });
   }
@@ -529,6 +539,8 @@ async function loadOriginalFighter(session: HsdAssetSession, spec: OriginalFight
     } else if (key.includes('Special') || key.startsWith('Eat') || key.startsWith('LightThrow') || COMBAT_MOTIONS.includes(key) || spec.extraAttacks?.includes(key)
       // A few Appeal scripts author real hitboxes (Luigi's kick, Charizard's flame);
       // the rest are harmless motions and never enter the attack tables.
+      // The getup attack strikes from the knockdown (lib/game/match.ts downed state).
+      || (key === 'DownAttackU' && move.events.some((event) => event.type === 'create'))
       || ((TAUNT_MOTIONS as readonly string[]).includes(key) && move.events.some((event) => event.type === 'create'))) attacks.set(key, move); // includes copied specials (MrSpecialN, FxSpecialN*)
   }
   // m-ex script sounds are fighter-relative (5000 + n): route them into the fighter's bank.

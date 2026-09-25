@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ModelPart, ModelTexture } from '../../../lib/hsd/model.ts';
 import type { DecodedTexture } from '../../../lib/hsd/texture.ts';
+import { effectiveTextureUpscale, textureUpscale, upscaleRgba } from './texture-upscale.ts';
 interface Shared<T> { value:T; refs:number; evict:()=>void }
 const geometries=new WeakMap<ModelPart,Shared<THREE.BufferGeometry>>();
 const geometryOwners=new WeakMap<THREE.BufferGeometry,Shared<THREE.BufferGeometry>>();
@@ -18,9 +19,18 @@ export function modelGeometry(part:ModelPart,owned:Set<THREE.BufferGeometry>,bui
  * the share key so one image used both ways keeps two GPU uploads. */
 export function modelTexture(source:ModelTexture,owned:Set<THREE.Texture>,mipmaps=false,releaseDecoded=true):THREE.Texture {
   let group=textures.get(source.image);if(!group){group=new Map();textures.set(source.image,group);}
-  const key=`${source.wrapS}:${source.wrapT}:${mipmaps?1:0}`;let entry=group.get(key);
+  // Optional texture upscale (Options → Visual effects). Effect models keep their decoded RGBA
+  // because they are rebuilt per burst (releaseDecoded=false): resampling those would hitch, so
+  // only fighters and stages are upscaled. The factor is part of the share key, so a changed
+  // setting reaches every model created afterwards without touching live GPU textures.
+  const scale=releaseDecoded?effectiveTextureUpscale(source.image.width,source.image.height,textureUpscale()):1;
+  // A magnification-tuned texture shimmers when it is minified instead: upscaled ones always mip.
+  if(scale>1)mipmaps=true;
+  const key=`${source.wrapS}:${source.wrapT}:${mipmaps?1:0}:${scale}`;let entry=group.get(key);
   if(!entry){
-    const value=new THREE.DataTexture(source.image.pixels,source.image.width,source.image.height,THREE.RGBAFormat);
+    const image=upscaleRgba(source.image.pixels,source.image.width,source.image.height,scale,source.wrapS,source.wrapT);
+    const value=new THREE.DataTexture(image.pixels,image.width,image.height,THREE.RGBAFormat);
+    if(scale>1)value.anisotropy=4;
     const wrap=(mode:number)=>mode===1?THREE.RepeatWrapping:mode===2?THREE.MirroredRepeatWrapping:THREE.ClampToEdgeWrapping;
     value.wrapS=wrap(source.wrapS);value.wrapT=wrap(source.wrapT);value.magFilter=THREE.LinearFilter;value.minFilter=mipmaps?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;value.generateMipmaps=mipmaps;value.flipY=false;value.needsUpdate=true;
     // Releasing the last GPU variant of an image drops its decoded RGBA too: the expansion is

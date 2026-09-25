@@ -44,7 +44,7 @@ No server asset names were added. All animation/parameter/audio data comes from 
 
 ## Explicit limitations
 
-- No analog/light shielding, powershields, shield tilting, shield DI, full IASA/tech/DI/SDI or original throw-escape/collision edge cases.
+- No analog/light shielding, powershields, shield tilting, shield DI, full IASA/DI/SDI or original throw-escape/collision edge cases. A prototype tech/knockdown layer exists (tumble landings: Passive/PassiveStand rolls and wall tech on a 20-frame L/R/Z window with a 40-frame miss lockout; missed techs bounce into DownBoundU/DownWaitU with stand/roll/attack getups on the original clips), but its frame data and intangibility windows are prototype values, not the original tables.
 - The held/thrown victim uses its own capture/downed poses attached to the captor's TransN2 anchor, with flat-floor correction. The original cross-character thrown-animation retargeter is **not** implemented. Mario's spinning back-throw victim pose and other exact contacts are therefore approximate.
 - Fox throw lasers are aimed through a restricted pose-based adapter rather than the full original item/gun callback graph. Exact downstream hit sequences are not guaranteed.
 - Shield break uses original damage/fall/dizzy clips with shortened state orchestration, not every original break-bounce/getup callback.

@@ -1,10 +1,12 @@
 {
   "name": "smash-web",
-  "version": "0.2.0",
+  "version": "0.2.6",
   "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
-  "imports": { "#custom-packs": "./lib/custom/empty.ts" },
+  "imports": {
+    "#custom-packs": "./lib/custom/empty.ts"
+  },
   "engines": {
     "node": ">=22.13.0"
   },

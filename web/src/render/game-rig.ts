@@ -9,7 +9,7 @@ import type { CustomVisuals } from './custom-visuals.ts';
 import { kirbyPartVisibility, hiddenDrawObjects, inhaleWalking } from '../../../lib/game/kirby.ts';
 import { cargoCarrying } from '../../../lib/game/dk.ts';
 import { diddyLean } from '../../../lib/game/diddy.ts';
-import { locomotionLoops } from '../../../lib/game/locomotion.ts';
+import { bodyFacing, locomotionLoops } from '../../../lib/game/locomotion.ts';
 import { raichuAnimationLoops } from '../../../lib/game/raichu.ts';
 import { samusPartVisibility } from '../../../lib/game/samus.ts';
 import { gamewatchPartVisibility, gamewatchHiddenOutline, gamewatchRim } from '../../../lib/game/gamewatch.ts';
@@ -166,7 +166,7 @@ export class GameRigs implements PoseProvider {
     if (visible && fighter.content.profile.kind === 'Gw') for (const dobj of gamewatchHiddenOutline(fighter, visible)) actor.hiddenDobjs.add(dobj);
     }
     actor.group.position.set(fighter.x, fighter.y, 0);
-    actor.group.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+    actor.group.rotation.y = bodyFacing(fighter) > 0 ? Math.PI / 2 : -Math.PI / 2;
     // Mushroom statuses scale the whole actor (render plus pose-derived hit/hurt geometry);
     // the Cloaking Device fades it. Both restore only their own values.
     // Mushroom size (fighter x34_scale): the simulated scale, ramps included (lib/game/item-status.ts).
@@ -229,7 +229,9 @@ export class GameRigs implements PoseProvider {
     partner.animationLoop = mirror ? actorLoopFor(fighter) : clipName !== 'DamageFlyN';
     partner.rotationOverrides.clear();
     partner.group.position.set(nana.x, nana.y, 0);
-    partner.group.rotation.y = nana.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+    // A mirroring Nana plays Popo's Turn/TurnRun clip too, so she keeps his entry yaw as well.
+    const nanaFacing = mirror && bodyFacing(fighter) !== fighter.facing ? -nana.facing : nana.facing;
+    partner.group.rotation.y = nanaFacing > 0 ? Math.PI / 2 : -Math.PI / 2;
     partner.group.visible = true;
     partner.update(frame, false);
     if (prepareDraws) {

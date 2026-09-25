@@ -10,7 +10,8 @@ export class HsdAssetSession {
   private actions = new LoadCache<string,FighterAction[]>(32);
   private archives = new LoadCache<string,HsdArchive>(32);
   private clips = new LoadCache<string,AnimationClip>(256);
-  constructor(private readonly reader: DiscReader, readonly info: Pick<DiscInfo, 'files'>) {}
+  /** `patchModel` adjusts a freshly parsed model before it is cached (a look's simulation-neutral joint flags). */
+  constructor(private readonly reader: DiscReader, readonly info: Pick<DiscInfo, 'files'>, private readonly patchModel?: (name: string, model: HsdModel) => void) {}
   private entry(name: string): DiscEntry {
     const entry = this.info.files.find((file) => file.path === name);
     if (!entry) throw new Error(`Your disc does not contain ${name}.`);
@@ -33,7 +34,7 @@ export class HsdAssetSession {
     }
   }
   async model(name: string): Promise<HsdModel> {
-    return this.models.get(name,async()=>loadModel(new HsdArchive(await this.read(this.entry(name)))));
+    return this.models.get(name,async()=>{const model=loadModel(new HsdArchive(await this.read(this.entry(name))));this.patchModel?.(name,model);return model;});
   }
   async bytes(name: string): Promise<Uint8Array> { return this.read(this.entry(name)); }
   async archive(name: string): Promise<HsdArchive> { return this.archives.get(name,async()=>new HsdArchive(await this.bytes(name))); }

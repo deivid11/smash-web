@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { FrameMonitor, initialSkipState, shouldRender, updateSkipState } from '../../web/src/play/frame-monitor.ts';
+import { FrameMonitor, initialSkipState, shouldRender, SKIP_RECOVER_FRAMES, updateSkipState } from '../../web/src/play/frame-monitor.ts';
 import {
   AUTO_STEP_P95_MS,
   AUTO_STEP_UP_P95_MS,
@@ -51,10 +51,10 @@ describe('Phase 1: render-skip state machine', () => {
     // Five more saturated frames step down to every 3rd.
     for (let i = 0; i < 5; i++) state = updateSkipState(state, true);
     expect(state.level).toBe(2);
-    // Recovery needs many clean frames and steps up one level at a time.
-    for (let i = 0; i < 30; i++) state = updateSkipState(state, false);
+    // Recovery needs a clean streak and steps up one level at a time.
+    for (let i = 0; i < SKIP_RECOVER_FRAMES; i++) state = updateSkipState(state, false);
     expect(state.level).toBe(1);
-    for (let i = 0; i < 30; i++) state = updateSkipState(state, false);
+    for (let i = 0; i < SKIP_RECOVER_FRAMES; i++) state = updateSkipState(state, false);
     expect(state.level).toBe(0);
     expect(shouldRender(state)).toBe(true);
   });

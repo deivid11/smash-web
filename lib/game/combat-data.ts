@@ -16,7 +16,9 @@ export interface CombatData {
   /** ftCo_800C0D0C: ground-element burial. Sink over x5F4 frames; escape timer is the grab
    * formula family x5F8–x60C with per-frame decay x610 and mash bonus x614. */
   bury: { sinkFrames:number; base:number; percentScale:number; decay:number; mash:number };
-  ledge: { down:number; input:number; slowPercent:number; quickWait:number; slowWait:number; cooldown:number; invincibility:number };
+  ledge: { down:number; input:number; slowPercent:number; quickWait:number; slowWait:number; cooldown:number; invincibility:number;
+    /** Native stick sectors (x20), C-up attack (x7F8), C-toward roll (x7FC), and tap jump (x70/x74). */
+    angle?:number; cAttack?:number; cRoll?:number; tapJump?:{threshold:number;window:number} };
   /** ftCo_DamageIce (ftCommonData x77C-x7A4): the frozen block's size, its fall gravity multiplier
    * and spin range, the mash-out timer (the hit's own damage x `timerScale`, `decay` a frame,
    * `mash` a press, `damageScale` per point of damage taken while frozen), and how long the
@@ -36,6 +38,6 @@ export function parseCombatData(arc:HsdArchive):CombatData {
     // Normal handicap 9 and tied first place, as in this local slice.
     grab:{base:f(0x354)+f(0x358)*(f(0x35c)-9)+f(0x360)*(f(0x364)-1),percentScale:f(0x368),decay:f(0x3a4),mash:f(0x3a8),weightScale:f(0x37c)},
     bury:{sinkFrames:Math.max(1,Math.round(f(0x5f4))),base:f(0x5f8)+f(0x5fc)*(f(0x600)-9)+f(0x604)*(f(0x608)-1),percentScale:f(0x60c),decay:f(0x610),mash:f(0x614)},
-    ledge:{down:f(0x480),input:f(0x494),slowPercent:i(0x488),quickWait:f(0x48c),slowWait:f(0x490),cooldown:i(0x498),invincibility:i(0x49c)},
+    ledge:{down:f(0x480),input:f(0x494),slowPercent:i(0x488),quickWait:f(0x48c),slowWait:f(0x490),cooldown:i(0x498),invincibility:i(0x49c),angle:f(0x20),cAttack:f(0x7f8),cRoll:f(0x7fc),tapJump:{threshold:f(0x70),window:i(0x74)}},
     ice:{size:f(0x7a0),gravity:f(0x77c),timerScale:f(0x790),decay:f(0x794),mash:f(0x798),damageScale:f(0x79c),spinMin:f(0x788),spinMax:f(0x78c),jumpFrames:f(0x7a4),knockbackScale:f(0x154),minKnockback:f(0x15c)}};
 }

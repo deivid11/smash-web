@@ -7,6 +7,7 @@ import { RouletteSetup } from './roulette-setup.tsx';
 import { GRAPHICS_PRESETS, GRAPHICS_QUALITIES, type GraphicsMode } from '../render/graphics-quality.ts';
 import { CAMERA_SHAKE_LEVELS, type CameraShakeLevel } from '../render/camera-shake.ts';
 import { VISUAL_EFFECTS, effectEnabled, isEffectDefault, type VisualEffectChoice } from '../render/visual-effects.ts';
+import { TEXTURE_UPSCALES, type TextureUpscale } from '../render/texture-upscale.ts';
 import { RUMBLE_LEVELS, type RumbleLevel } from '../../../lib/game/rumble.ts';
 import { BattleSelect } from './battle-select.tsx';
 import { StageSelect } from './selection-scenes.tsx';
@@ -330,6 +331,11 @@ function PlayApp({ session, online }: { session: GameSession; online: OnlineSess
         <label className="check"><input type="checkbox" checked={view.touch} onChange={event => session.setTouch(event.target.checked)} /> On-screen touch controls</label>
         <label className="check"><input type="checkbox" id="hud-mode-setting" checked={view.hudMode === 'overhead'} onChange={event => session.setHudMode(event.target.checked ? 'overhead' : 'cards')} /> Minimal HUD</label>
         <label className="presentation-setting">GRAPHICS<select id="graphics-quality" value={view.graphicsMode} onChange={event => session.setGraphicsMode(event.target.value as GraphicsMode)}><option key="auto" value="auto">Auto · adapts to this device{view.graphicsMode === 'auto' ? ` (now ${GRAPHICS_PRESETS[view.graphics].label})` : ''}</option>{GRAPHICS_QUALITIES.map(quality => <option key={quality} value={quality}>{GRAPHICS_PRESETS[quality].label} · pinned</option>)}</select></label>
+        {view.looks.length > 0 && <label className="presentation-setting">LOOK<select id="look-setting" value={view.look} onChange={event => session.setLook(event.target.value)}>
+          {view.looks.map(look => <option key={look.id} value={look.id}>{look.name} · host-served mod</option>)}
+          <option value="original">Original textures</option>
+        </select></label>}
+        {view.looks.length > 0 && view.look !== view.activeLook && <p className="effects-note look-note">Cosmetic only: online rooms still match players on either look. Applies after a reload. <button className="secondary" id="look-reload" type="button" onClick={() => location.reload()}>Reload now</button></p>}
         <details className="effects-settings">
           <summary>VISUAL EFFECTS · {VISUAL_EFFECTS.filter(effect => effectEnabled(view.graphics, view.effects, effect.id)).length} of {VISUAL_EFFECTS.length} on</summary>
           <p className="effects-note">Every effect is off by default. Pin one On to enable it; the graphics preset above sets its strength.</p>
@@ -341,6 +347,12 @@ function PlayApp({ session, online }: { session: GameSession; online: OnlineSess
               <option value="off">Off</option>
             </select>
           </label>)}
+          <label className="presentation-setting effect-setting">
+            <span>TEXTURE UPSCALE<small>Smooth bicubic upscale of the original fighter and stage textures, with mipmaps: cleaner close-ups, no invented detail. Applies to fighters and stages loaded after the change; costs load time and video memory.</small></span>
+            <select id="texture-upscale" value={view.textureUpscale} onChange={event => session.setTextureUpscale(Number(event.target.value) as TextureUpscale)}>
+              {TEXTURE_UPSCALES.map(factor => <option key={factor} value={factor}>{factor === 1 ? 'Off · original size' : `${factor}× · ${factor * factor}× the texels`}</option>)}
+            </select>
+          </label>
         </details>
         <label className="check"><input type="checkbox" id="smooth-motion" checked={view.smoothMotion} onChange={event => session.setSmoothMotion(event.target.checked)} /> Smooth high-refresh motion (120/144/165 Hz)</label>
         <label className="presentation-setting">CAMERA SHAKE<select id="camera-shake" value={view.cameraShake} onChange={event => session.setCameraShake(event.target.value as CameraShakeLevel)}>{CAMERA_SHAKE_LEVELS.map(level => <option key={level} value={level}>{level === 'off' ? 'Off' : level === 'reduced' ? 'Reduced' : 'Full'}</option>)}</select></label>

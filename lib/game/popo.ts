@@ -83,7 +83,11 @@ export function stepPopoSpecial(f: MatchFighter, physics: MeleePhysics, finish: 
     // Solo Belay (no-Nana native path): Start, Throw rise, Throw2, helpless.
     if (s.phase === 'start' && ended()) {
       phase(f, 'travel');
-      f.velocity = { x: 0, y: f32(p.up.rise) };
+      // PROTOTYPE partner Belay: with Nana in tow the throw lifts well past the solo rise
+      // (the original partner-throw heights stay unported — this is a labeled stand-in;
+      // solo Popo keeps the native value exactly).
+      const partnered = f.nana?.active ? 1.6 : 1;
+      f.velocity = { x: 0, y: f32(p.up.rise * partnered) };
       f.grounded = false; f.floor = null; f.jumpsUsed = a.maxJumps;
     } else if (s.phase === 'travel' && ended()) phase(f, 'end');
     else if (s.phase === 'end' && ended()) { finish(true, p.up.landing, 1); return result; }

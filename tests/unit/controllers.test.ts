@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, controllerProfile, emptyMapping, guessedMapping, mappedInput, mappingError, standardMapping, type ControllerAction, type PadRecord } from '../../lib/input/gamepad-profiles.ts';
+import { ACTIONS, controllerProfile, emptyMapping, guessedMapping, mappedInput, mappingError, standardMapping, switchLayout, type ControllerAction, type PadRecord } from '../../lib/input/gamepad-profiles.ts';
 import { ControllerHub, MAX_LOCAL_CONTROLLERS, type LocalControllerCount } from '../../web/src/input/controller-hub.ts';
 
 function pad(index = 0, id = 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 02fd)', mapping = 'standard', buttons = 17, axes = 4) {
@@ -53,6 +53,47 @@ describe('browser-standard controller profiles and conservative raw identificati
   it('never calls generic Nintendo vendor057e a Wii and never gives a raw brand ID a standard profile', () => {
     expect(controllerProfile(pad(0, '057e Nintendo controller')).family).toBe('nintendo');
     for (const id of ['Xbox controller', 'DualSense', 'Wii Remote', 'unknown']) { const profile = controllerProfile(pad(0, id, '')); expect(profile.mapping).toBeNull(); expect(profile.labels).toEqual([]); }
+  });
+  it('recognizes official and licensed Switch pads by name or USB id, in Chrome and Firefox ID forms', () => {
+    for (const id of ['Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)', '057e-2009-Pro Controller', 'Joy-Con (L)', 'Joy-Con L+R (Vendor: 057e Product: 200e)', 'Nintendo Switch Pro Controller', '8BitDo Pro 2 (Vendor: 057e Product: 2009)']) expect(switchLayout(id), id).toBe('official');
+    for (const id of ['HORIPAD S (Vendor: 0f0d Product: 00c1)', '0f0d-00c1-HORI CO.,LTD. HORIPAD S', 'PowerA Wired Controller Plus (Vendor: 20d6 Product: a711)', 'Faceoff Wired Pro Controller for Nintendo Switch (Vendor: 0e6f Product: 0180)', 'HORI CO.,LTD. POKKEN CONTROLLER', 'PowerA Nintendo Switch Wired Controller']) expect(switchLayout(id), id).toBe('licensed');
+    for (const id of ['Xbox Wireless Controller', 'Wireless Controller', 'HORI Fighting Commander (Vendor: 0f0d Product: 0066)', 'Mystery Gamepad']) expect(switchLayout(id), id).toBeNull();
+    // A licensed pad the browser already remapped keeps "A attacks, B specials" and Nintendo labels.
+    const hori = controllerProfile(pad(0, 'HORIPAD S (STANDARD GAMEPAD Vendor: 0f0d Product: 00c1)'));
+    expect(hori).toMatchObject({family: 'nintendo', standard: true, rawLayout: null}); expect(hori.mapping!.buttons).toMatchObject({attack: [1], special: [0]}); expect(hori.labels[1]).toBe('A (east)');
+    // PowerA / HORI Xbox pads stay Xbox; a Wii U Pro Controller stays Wii.
+    expect(controllerProfile(pad(0, 'PowerA Xbox Series X Controller (Vendor: 20d6 Product: 2001)')).family).toBe('xbox');
+    expect(controllerProfile(pad(0, 'Wii U Pro Controller', '')).rawLayout).toBeNull();
+  });
+  it('automaps a raw Switch pad to the Smash layout by its known button order, and falls back when it cannot', () => {
+    const official = guessedMapping(pad(0, '057e-2009-Pro Controller', '', 14, 4))!;
+    expect(official.buttons).toMatchObject({attack: [1], special: [0], jump: [2, 3], grab: [4, 5], shield: [6, 7], taunt: [8], strong: [11]});
+    expect(official.axes).toMatchObject({cx: {index: 2}, cy: {index: 3, sign: -1}});
+    const licensed = guessedMapping(pad(0, 'PowerA Wired Controller Plus (Vendor: 20d6 Product: a711)', '', 14, 10))!;
+    expect(licensed.buttons).toMatchObject({attack: [2], special: [1], jump: [0, 3], grab: [4, 5], shield: [6, 7], taunt: [8], strong: [11]});
+    expect(licensed.axes.cy).toMatchObject({index: 5}); // ten HID axes: the right stick's Y is Rz
+    const held = pad(0, 'HORIPAD S (Vendor: 0f0d Product: 00c1)', '', 14, 6); press(held, 2);
+    expect(mappedInput(held, guessedMapping(held)!)).toMatchObject({attack: true, special: false, jump: false});
+    // A trigger-like right axis resting off-center leaves the smash stick unbound, never misbound.
+    const offCenter = pad(0, '057e-2009-Pro Controller', '', 14, 4); offCenter.axes[3] = -1;
+    expect(guessedMapping(offCenter)!.axes).toMatchObject({cx: null, cy: null});
+    // Too few buttons for the Switch order: the generic guess still makes the pad usable.
+    expect(guessedMapping(pad(0, 'Joy-Con (R)', '', 8, 2))!.buttons).toMatchObject({attack: [0], special: [1], taunt: []});
+    // A Wii remote naming Nintendo is never given the Switch order.
+    expect(guessedMapping(pad(0, 'Nintendo RVL-CNT-01', '', 14, 4))!.buttons.attack).toEqual([0]);
+  });
+  it('tells Linux players about the joystick node a Chrome-based browser needs, and nobody else', () => {
+    expect(harness([]).hub.getSnapshot().message).toContain('/dev/input/js*');
+    const mac = new ControllerHub({getGamepads: () => [], now: () => 0, storage: memoryStorage(), secureContext: true, platform: 'MacIntel'}); mac.detect(); mac.scan(1);
+    expect(mac.getSnapshot().message).toContain('No controller exposed yet'); expect(mac.getSnapshot().message).not.toContain('joydev');
+  });
+  it('lets a raw Switch pad pause with Plus and keeps West off its Attack button in the menus', () => {
+    const p = pad(0, 'PowerA Wired Controller Plus (Vendor: 20d6 Product: a711)', '', 14, 6), h = harness([p]);
+    expect(h.devices()[0]).toMatchObject({profile: 'Nintendo', usable: true, guessed: true});
+    let menus = 0; h.hub.onMenu = () => { menus++; };
+    press(p, 9); h.scan(); expect(menus).toBe(1); press(p, 9, false); h.scan();
+    press(p, 2); h.scan(); expect(h.hub.menuPads()[0]).toMatchObject({confirm: true, west: false});
+    press(p, 2, false); press(p, 0); h.scan(); expect(h.hub.menuPads()[0]).toMatchObject({confirm: false, west: true});
   });
   it('uses only valid standard button/axis capabilities, not guessed missing indices', () => {
     expect(controllerProfile(pad(0, 'Xbox', 'standard', 5, 1)).mapping).toBeNull();

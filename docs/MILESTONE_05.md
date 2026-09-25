@@ -32,6 +32,8 @@ This is still not a complete HSD particle, TEV, lighting, or billboard implement
 
 No claim of HD reconstruction, full SEM automation, original AX resampling/reverb, or perceptually identical mixing is made. Music/announcer banks remain out of scope.
 
+*(Later: the original aux-A reverb and aux-B stage echo buses were ported for match SFX; see [AUDIO_AUX.md](AUDIO_AUX.md).)*
+
 ## Verification
 
 With the real local ISO: **258 unit tests + 16 local browser tests + 23 server browser tests = 297 passing**. Coverage includes queued/late/held/interrupted jab inputs, Fox rapid-loop exit, Mario's third jab, downward move selection, original down-air multihits/landing, crouch, effect lifetime/reset, original fireball TEV descriptors, offline audio headroom, and bounded loop cleanup.

@@ -106,3 +106,34 @@ export function settleFrameDistance(previous: number, next: number, growth: numb
   if (!Number.isFinite(previous) || !Number.isFinite(next) || !Number.isFinite(growth) || growth < 1 || !Number.isFinite(step) || step < 0) throw new Error('Invalid cosmetic camera bounds.');
   return previous > 0 ? Math.min(next, previous * growth + step) : next;
 }
+/** The stage camera range in world units (Stage_GetCamBounds*Offset). */
+export interface CameraBounds { readonly left: number; readonly right: number; readonly top: number; readonly bottom: number }
+/** Camera_8002958C: a subject past the stage camera range pulls the camera only as far as the
+ * range's edge, so a launched fighter leaves the shot (and gets the off-screen magnifier). */
+export function clampToCameraBounds(point: FramingPoint, bounds: CameraBounds): FramingPoint {
+  return { x: Math.min(bounds.right, Math.max(bounds.left, point.x)), y: Math.min(bounds.top, Math.max(bounds.bottom, point.y)) };
+}
+/** Camera_8002A768 for a look-at camera at (target.x, target.y + lift, distance) aimed at the
+ * target: project the four frustum corners onto the z=0 plane and shift the shot so none of
+ * them shows past the camera range. A view wider (or taller) than the range sits centred
+ * between both edges, as the original averages the two overlaps. Translation only: the zoom
+ * is left alone. */
+export function confineCameraTarget(target: FramingPoint, distance: number, lift: number, fov: number, aspect: number, bounds: CameraBounds): FramingPoint {
+  if (![target.x, target.y, distance, lift, fov, aspect, bounds.left, bounds.right, bounds.top, bounds.bottom].every(Number.isFinite) || distance <= 0 || aspect <= 0 || fov <= 0 || fov >= 179 || bounds.right <= bounds.left || bounds.top <= bounds.bottom) return target;
+  const length = Math.hypot(lift, distance), fy = -lift / length, fz = -distance / length;
+  // Camera basis: right = +x; up = right × forward.
+  const uy = -fz, uz = fy;
+  const tanV = Math.tan(fov * Math.PI / 360), tanH = tanV * aspect;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const dx = sx * tanH, dy = fy + sy * tanV * uy, dz = fz + sy * tanV * uz;
+    if (dz > -0.001) continue; // a corner above the horizon never meets the plane
+    const t = -distance / dz, x = target.x + t * dx, y = target.y + lift + t * dy;
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const left = minX < bounds.left ? bounds.left - minX : 0, right = maxX > bounds.right ? bounds.right - maxX : 0;
+  const top = maxY > bounds.top ? bounds.top - maxY : 0, bottom = minY < bounds.bottom ? bounds.bottom - minY : 0;
+  const shiftX = left && right ? 0.5 * (left + right) : left || right;
+  const shiftY = top && bottom ? 0.5 * (top + bottom) : top || bottom;
+  return { x: target.x + shiftX, y: target.y + shiftY };
+}

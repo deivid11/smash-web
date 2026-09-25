@@ -28,7 +28,11 @@ if (discSource === 'server') {
   console.log('Verifying the server-side Melee ISO before exposing any assets…');
   const aceInput = process.env.MELEE_ACE_ISO;
   console.log(aceInput ? 'Registering the ACE 2.0 extension disc (allowlisted ACE assets only)…' : 'No MELEE_ACE_ISO: original roster only.');
-  source = await openIsoSource(resolve(root, input), aceInput ? resolve(root, aceInput) : undefined);
+  // Optional cosmetic look disc (MELEE_LOOK_ISO, e.g. Animelee): only its pinned, simulation-neutral
+  // files are offered, and each player picks the look locally (lib/hsd/looks.ts).
+  const lookInput = process.env.MELEE_LOOK_ISO;
+  if (lookInput) console.log('Registering the cosmetic look disc (pinned files only)…');
+  source = await openIsoSource(resolve(root, input), aceInput ? resolve(root, aceInput) : undefined, lookInput ? resolve(root, lookInput) : undefined);
 }
 const databasePath = process.env.SMASH_DB_PATH === 'off' ? undefined : resolve(root, process.env.SMASH_DB_PATH ?? 'private/accounts.sqlite');
 const analyticsPath = process.env.SMASH_ANALYTICS_DB === 'off' ? undefined : resolve(root, process.env.SMASH_ANALYTICS_DB ?? 'private/analytics.sqlite');
@@ -65,7 +69,7 @@ try {
   const bound = server.address();
   const actualPort = typeof bound === 'object' && bound ? bound.port : port;
   console.log(source
-    ? `Verified ${source.manifest.gameId} USA v1.02. ${source.manifest.files.length} runtime assets available${source.manifest.modded ? ' (original + ACE 2.0)' : ' (original only)'}.`
+    ? `Verified ${source.manifest.gameId} USA v1.02. ${source.manifest.files.length} runtime assets available${source.manifest.modded ? ' (original + ACE 2.0)' : ' (original only)'}.${source.manifest.looks?.length ? ` Looks: ${source.manifest.looks.map((look) => `${look.name} (${look.files.length} files)`).join(', ')}.` : ''}`
     : `Client-disc mode: players select their own ISO in the browser (ACE 2.0 ${clientAce}). No disc is opened and no game asset is served here.`);
   console.log(`Listening on ${host}:${actualPort}. Rendering and animation playback stay in the browser.`);
   console.log(`Play: http://127.0.0.1:${actualPort}/play.html`);

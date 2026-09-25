@@ -20,7 +20,11 @@ export interface ControllerMapping {
   buttons: Record<ControllerAction, number[]>;
   deadzone: number; threshold: number;
 }
-export interface ControllerProfile { family: ControllerFamily; name: string; standard: boolean; labels: readonly string[]; mapping: ControllerMapping | null }
+/** Raw button order of a Nintendo Switch pad the browser did not remap (see {@link switchLayout}). */
+export type SwitchLayout = 'official' | 'licensed';
+export interface ControllerProfile { family: ControllerFamily; name: string; standard: boolean; labels: readonly string[]; mapping: ControllerMapping | null;
+  /** Set only for a raw (non-standard) Switch pad whose button order is known: Plus is button 9 there, like Start. */
+  rawLayout: SwitchLayout | null }
 const REQUIRED: readonly ControllerAction[] = ['jump', 'attack', 'strong', 'special', 'shield', 'grab'];
 const STANDARD_LABELS = ['South', 'East', 'West', 'North', 'Left shoulder', 'Right shoulder', 'Left trigger', 'Right trigger', 'Select / view', 'Start / menu', 'Left stick click', 'Right stick click', 'D-pad up', 'D-pad down', 'D-pad left', 'D-pad right', 'Home'];
 /** Smash layout by standard position: South (Xbox A / Cross) attacks, East (B /
@@ -39,6 +43,27 @@ export function standardMapping(family?: ControllerFamily): ControllerMapping {
   if (family === 'nintendo') { buttons.attack = [1]; buttons.special = [0]; }
   return {version: 1, axes: {x: {index: 0, sign: 1, center: 0}, y: {index: 1, sign: -1, center: 0}, cx: {index: 2, sign: 1, center: 0}, cy: {index: 3, sign: -1, center: 0}}, buttons, deadzone: 0.18, threshold: 0.55};
 }
+/** Licensed Switch pads by USB id (HORI, PowerA, PDP): `vendor:product`, `x` = any digit. */
+const LICENSED_SWITCH = /^(0f0d:(00c1|0092|00f6|00dc|00aa)|20d6:a71[0-9a-f]|0e6f:018[0-9a-f])$/;
+/** Chrome: "Name (Vendor: 0f0d Product: 00c1)"; Firefox: "0f0d-00c1-Name". */
+function usbId(id: string): string | null {
+  const match = /vendor:\s*([0-9a-f]{4})\s+product:\s*([0-9a-f]{4})/.exec(id) ?? /^([0-9a-f]{4})-([0-9a-f]{4})-/.exec(id);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+/** Which Nintendo Switch pad an ID names, by the order its RAW buttons arrive in:
+ * - `official` (Pro Controller, Joy-Con, charging grip, and pads presenting as one such as
+ *   8BitDo in Switch mode): B 0, A 1, Y 2, X 3 — the standard positions.
+ * - `licensed` (HORI, PowerA, PDP, Pokkén pad: the input-only USB Switch protocol):
+ *   Y 0, B 1, A 2, X 3.
+ * Both continue L 4, R 5, ZL 6, ZR 7, Minus 8, Plus 9, stick clicks 10/11, Home 12, Capture 13.
+ * Browsers remap most of these to the standard layout themselves; the order only matters
+ * for the ones that arrive raw. Best-effort from the ID, never a hardware certification. */
+export function switchLayout(rawId: string): SwitchLayout | null {
+  const id = rawId.slice(0, 512).toLowerCase(), usb = usbId(id);
+  if (usb && LICENSED_SWITCH.test(usb)) return 'licensed';
+  if (!usb?.startsWith('057e:') && /\bhori|power\s?a\b|\bpdp\b|performance designed|\bbda\b|faceoff|pokken/.test(id) && /switch|nintendo|pokken|faceoff/.test(id)) return 'licensed';
+  return /nintendo|057e|switch.*(pro|controller)|joy-?con|\bpro controller\b/.test(id) ? 'official' : null;
+}
 export function controllerProfile(pad: Pick<PadRecord, 'id' | 'mapping' | 'buttons' | 'axes'>): ControllerProfile {
   const id = pad.id.slice(0, 512).toLowerCase();
   // Wii/RVL before generic Nintendo: a vendor ID alone does NOT identify a Wii model.
@@ -51,7 +76,7 @@ export function controllerProfile(pad: Pick<PadRecord, 'id' | 'mapping' | 'butto
     // Sony pads name themselves only "Wireless Controller" over Bluetooth (Android,
     // Linux, macOS); Xbox's "Xbox Wireless Controller" already matched above.
     : /playstation|dualshock|dualsense|054c|sony.*(controller|gamepad)|^wireless controller\b/.test(id) ? 'playstation'
-    : /nintendo|057e|switch.*(pro|controller)|joy-con/.test(id) ? 'nintendo' : 'unknown';
+    : switchLayout(id) ? 'nintendo' : 'unknown';
   const standard = pad.mapping === 'standard';
   const labels = [...STANDARD_LABELS];
   if (standard && family === 'xbox') labels.splice(0, 12, 'A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View / Back', 'Menu / Start', 'LS click', 'RS click');
@@ -65,7 +90,7 @@ export function controllerProfile(pad: Pick<PadRecord, 'id' | 'mapping' | 'butto
   if (pad.axes.length < 4) { full.axes.cx = null; full.axes.cy = null; }
   const mapping = standard && !mappingError(full, pad) ? full : null;
   // Raw indices have no portable face-button names, even when the ID names a familiar brand.
-  return {family, name, standard, labels: standard ? labels : [], mapping};
+  return {family, name, standard, labels: standard ? labels : [], mapping, rawLayout: standard || family !== 'nintendo' ? null : switchLayout(id)};
 }
 /** Best-effort mapping for raw (non-standard) layouts, so every controller sends
  * input without setup. Most raw drivers (DirectInput, evdev, HID) list the four
@@ -74,12 +99,25 @@ export function controllerProfile(pad: Pick<PadRecord, 'id' | 'mapping' | 'butto
  * unbound (trigger axes and hats differ per driver) and off-center resting axes
  * are never bound. Null when movement plus every required action cannot be
  * covered — calibration remains the fix, and the panel flags guesses. */
-export function guessedMapping(pad: Pick<PadRecord, 'buttons' | 'axes'>): ControllerMapping | null {
+export function guessedMapping(pad: Pick<PadRecord, 'buttons' | 'axes'> & {readonly id?: string}): ControllerMapping | null {
   const count = pad.buttons.length;
   const resting = (index: number) => Number.isFinite(pad.axes[index]) && Math.abs(pad.axes[index]!) <= 0.5;
   if (count < 7 || pad.axes.length < 2 || !resting(0) || !resting(1)) return null;
   const mapping = emptyMapping();
   mapping.axes.x = {index: 0, sign: 1, center: 0}; mapping.axes.y = {index: 1, sign: -1, center: 0};
+  // A raw Switch pad has a known button order ({@link switchLayout}), so it gets the same Smash
+  // layout as a standard one — A attacks, B specials, X / Y jump, L / R grab, ZL / ZR shield,
+  // Minus taunts, right-stick click is Strong — instead of the generic face order below.
+  const layout = pad.id === undefined ? null : controllerProfile({id: pad.id, mapping: '', buttons: pad.buttons, axes: pad.axes}).rawLayout;
+  if (layout && count >= 12) {
+    mapping.buttons.attack = [layout === 'official' ? 1 : 2]; mapping.buttons.special = [layout === 'official' ? 0 : 1]; mapping.buttons.jump = layout === 'official' ? [2, 3] : [0, 3];
+    mapping.buttons.grab = [4, 5]; mapping.buttons.shield = [6, 7]; mapping.buttons.taunt = [8]; mapping.buttons.strong = [11];
+    // Right stick: axes 2/3, or 2/5 where the driver lists all ten HID axes (X Y Z Rx Ry Rz …).
+    const cy = pad.axes.length >= 10 ? 5 : 3;
+    if (resting(2) && resting(cy)) { mapping.axes.cx = {index: 2, sign: 1, center: 0}; mapping.axes.cy = {index: cy, sign: -1, center: 0}; }
+    if (!mappingError(mapping, pad)) return mapping;
+  }
+  mapping.buttons = emptyMapping().buttons; mapping.axes.cx = null; mapping.axes.cy = null;
   // Same Smash order as the standard layout: attack 0, special 1, jump 2/3,
   // grab on the bumpers, shield on the triggers, Strong on R3 when it exists.
   mapping.buttons.attack = [0]; mapping.buttons.special = [1]; mapping.buttons.jump = [2, 3];

@@ -427,13 +427,23 @@ export class CombatController {
     const value=(type:number)=>{const t=tracks.find(t=>t.type===type);return (t?sampleTrack(t.keys,f.animationFrame)??0:0)*scale;};
     return {z:value(7),y:value(6)};
   }
-  tryLedge(f:MatchFighter,i:PlayerInput,oldY:number):void {
-    if(f.grounded||f.hitlag>0||f.combat.cooldown>0||axis(i)<=-this.h.content.combat.ledge.down||f.velocity.y>0||!['fall','jump','airjump','helpless','special'].includes(f.state))return;
+  tryLedge(f:MatchFighter,i:PlayerInput,oldX:number,oldY:number):void {
+    // mpColl_800471F8's ledge-enabled variants test cur_pos.y < prev_pos.y, not self_vel:
+    // knockback, scripted motion and collision corrections all affect actual descent.
+    if(f.grounded||f.hitlag>0||f.combat.cooldown>0||axis(i)<=-this.h.content.combat.ledge.down||f.y>=oldY||!['fall','jump','airjump','helpless','special'].includes(f.state))return;
     if(f.special&&!(specialCatchesLedge(f)??(f.special.direction==='up'||f.special.direction==='side')))return;
     const snap=f.content.profile.ledgeSnap,scale=f.content.profile.attributes.modelScale;
     for(const ledge of this.h.content.stage.ledges){
       if(this.h.fighters.some(other=>other!==f&&other.combat.ledge===ledge.id))continue;
-      if((f.x-ledge.x)*ledge.facing>0.5||Math.abs(f.x-ledge.x)>snap.x*scale)continue;
+      // Ordinary aerial collision checks only the facing side. Special callbacks can use
+      // CLIFFCATCH_BOTH; retain their existing subset policy rather than imposing this on them.
+      if(!f.special&&f.facing!==ledge.facing)continue;
+      // Swept snap envelope (mpColl_80044164 / mpColl_800443C4), using the prototype's
+      // floor-contact origin instead of claiming the native animated ECB side/bottom offsets.
+      if((f.x-ledge.x)*ledge.facing>=0||f.y>=ledge.y)continue;
+      const left=Math.min(oldX,f.x)-(ledge.facing<0?snap.x*scale:0);
+      const right=Math.max(oldX,f.x)+(ledge.facing>0?snap.x*scale:0);
+      if(ledge.x<left||ledge.x>right)continue;
       const lower=(snap.y-snap.height/2)*scale,upper=(snap.y+snap.height/2)*scale;
       if(ledge.y-f.y<lower||ledge.y-oldY>upper)continue;
       this.takeLedge(f,ledge.id);return;
@@ -457,16 +467,31 @@ export class CombatController {
     const ledge=this.h.content.stage.ledges.find(l=>l.id===c.ledge);if(!ledge){this.idle(f);return false;}
     if(f.animation==='CliffCatch'&&end){this.change(f,'ledge','CliffWait');c.ledgeTimer=f.percent<p.slowPercent?p.quickWait:p.slowWait;f.invulnerable=p.invincibility;}
     if(f.state==='ledge'&&f.animation==='CliffWait'){
-      c.ledgeTimer--;const neutral=Math.abs(i.x)<p.input&&Math.abs(axis(i))<p.input;
-      if(neutral)c.ledgeReady=true;
+      c.ledgeTimer--;
+      const cx=i.cX??0,cy=i.cY??0;
+      const leftActive=Math.abs(i.x)>=p.input||Math.abs(axis(i))>=p.input;
+      const rightActive=Math.abs(cx)>=p.input||Math.abs(cy)>=p.input;
+      if(!leftActive&&!rightActive)c.ledgeReady=true;
       let name:string|undefined;
       const suffix=f.percent<p.slowPercent?'Quick':'Slow';
-      if(i.jump&&!prev.jump)name=`CliffJump${suffix}1`;
-      else if((i.attack&&!prev.attack)||(i.strong&&!prev.strong)||cStickEdge(i,prev))name=`CliffAttack${suffix}`;
-      else if(i.shield&&!prev.shield)name=`CliffEscape${suffix}`;
-      else if(c.ledgeReady&&(axis(i)>p.input||i.x*ledge.facing>p.input))name=`CliffClimb${suffix}`;
-      else if(c.ledgeTimer<=0||(c.ledgeReady&&(axis(i)<-p.input||i.x*ledge.facing<-p.input))){f.grounded=false;this.change(f,'fall','Fall');return false;}
+      const attackGate=p.cAttack??CSTICK_THRESHOLD,rollGate=p.cRoll??CSTICK_THRESHOLD;
+      const cAttack=(prev.cY??0)<attackGate&&cy>=attackGate;
+      const cRoll=(prev.cX??0)*f.facing<rollGate&&cx*f.facing>=rollGate;
+      const tapJump=p.tapJump&&axis(i)>=p.tapJump.threshold&&f.link.verticalTicks<p.tapJump.window;
+      // ftCo_CliffWait_IASA: A/B/C-up attack, L/R/C-toward escape, jump, then stick release/climb.
+      if((i.attack&&!prev.attack)||(i.special&&!prev.special)||(i.strong&&!prev.strong)||cAttack)name=`CliffAttack${suffix}`;
+      else if((i.shield&&!prev.shield)||cRoll)name=`CliffEscape${suffix}`;
+      else if((i.jump&&!prev.jump)||tapJump)name=`CliffJump${suffix}1`;
+      else if(c.ledgeReady&&(leftActive||rightActive)){
+        const x=leftActive?i.x:cx,y=leftActive?axis(i):cy;
+        // ftCo_GetLStickAngle uses |x|, so this sector test is symmetric at both ledges.
+        const angle=Math.atan2(y,Math.abs(x)),gate=p.angle??Math.PI/4;
+        const climb=angle>gate||(angle>-gate&&x*f.facing>=0);
+        if(climb){if(leftActive)name=`CliffClimb${suffix}`;}
+        else {f.grounded=false;this.change(f,'fall','Fall');return false;}
+      }
       if(name){this.change(f,'ledge-action',name);f.invulnerable=0;}
+      else if(c.ledgeTimer<=0){f.grounded=false;this.change(f,'fall','Fall');return false;}
     }else if(f.state==='ledge-action'&&end){
       if(f.animation.includes('Jump')){
         const name=f.animation.replace(/1$/,'2');this.change(f,'ledge-jump',name);f.grounded=false;f.floor=null;f.jumpsUsed=1;

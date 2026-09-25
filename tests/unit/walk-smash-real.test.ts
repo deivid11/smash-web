@@ -49,7 +49,8 @@ describe.skipIf(!iso)('original walking and smash charge',()=>{
  it('switches run to walk with friction, then resumes running and stops on neutral',()=>{
   ticks(10,{x:1});const fast=game.fighters[0].velocity.x;
   step({x:1,walk:true});expect(game.fighters[0].state).toBe('walk');expect(game.fighters[0].velocity.x).toBeLessThan(fast);
-  ticks(8,{x:1,walk:true});step({x:1});expect(game.fighters[0].state).toBe('run');ticks(35);expect(game.fighters[0].state).toBe('idle');expect(game.fighters[0].velocity.x).toBe(0);
+  // Releasing the walk key leaves a stale full stick (ftCo_Dash_CheckInput needs a fresh flick): it keeps walking.
+  ticks(8,{x:1,walk:true});step({x:1});expect(game.fighters[0].state).toBe('walk');step();step({x:1});expect(game.fighters[0].state).toBe('run');ticks(35);expect(game.fighters[0].state).toBe('idle');expect(game.fighters[0].velocity.x).toBe(0);
  });
  it('walks both directions without negative animation rates',()=>{
   ticks(12,{x:1,walk:true});ticks(12,{x:-1,walk:true});expect(game.fighters[0].velocity.x).toBeLessThan(0);expect(game.fighters[0].facing).toBe(-1);expect(game.fighters[0].animationFrame).toBeGreaterThanOrEqual(0);

@@ -61,6 +61,16 @@ export interface CommonGameplayData {
   itemThrows?: ReadonlyArray<{ speed: number; angle: number }>;
   itemSmashAnimationRate?: number;
   smashInputWindow?: number;
+  /** PlCo x40: exclusive stick-tilt age limit for ftCo_Dash_CheckInput (not x40 + x44). */
+  dashInputWindow?: number;
+  /** PlCo x54: proportional ground-velocity reduction when Dash IASA changes action. */
+  dashExitFriction?: number;
+  /** PlCo x44: initial Dash (entry arg1=1) cannot reverse while anim_frame <= this. */
+  dashInitialLockout?: number;
+  /** PlCo x48: an initial Dash rolls forward (EscapeF) from a held shield while anim_frame <= this. */
+  dashRollWindow?: number;
+  /** PlCo x4C: Dash accepts side-B, the dash attack and ftCo_80091AD8 guard while anim_frame <= this. */
+  dashActionWindow?: number;
   lCancel?: { window: number; divisor: number };
   /** ftCo_Damage recovery inputs: x1D0 hitstun jump buffer, x1C anti-mash press gap and the
    * x7E8/x7EC/x7F0 meteor-cancel angle range and lockout. */
@@ -69,6 +79,31 @@ export interface CommonGameplayData {
   /** Item-status constants: ftLoadCommonData[12..14] modifier tables (size, Bunny Hood,
    * metal; ftCo_800D105C) and the ftCommonData mushroom/Warp Star/Hammer/metal/cloak fields. */
   itemStatus?: ItemStatusCommon;
+  /** ftLoadCommonData[21] (gCrowdConfig): the crowd reaction thresholds read by sfx/crowdsfx.c. */
+  crowd?: CrowdConfig;
+}
+/** gCrowdConfig (third_party/melee/src/melee/sfx/crowdsfx.h), PlCo ftLoadCommonData[21]. */
+export interface CrowdConfig {
+  /** x0/x4/x8: knockback magnitude for crowd category 1/2/3. */
+  kbLow: number; kbMid: number; kbHigh: number;
+  /** xC/x10/x14: launch angles (radians) strictly inside (min, max) scale the magnitude by angleMult. */
+  angleMin: number; angleMax: number; angleMult: number;
+  /** x18: frames a repeat hit from the same attacker still counts as the same flurry. */
+  comboFrames: number;
+  /** x1C: percent the attacker needs before the crowd will chant their name. */
+  chantPercent: number;
+  /** x20: frames of quiet (no chant) before another chant may start. */
+  cheerLimit: number;
+  /** x24: chant repeats that must already have played before a hit may interrupt it. */
+  chantInterruptAfter: number;
+  /** x28: chant repeats before the closing cheer (also the idle marker). */
+  maxChants: number;
+  /** x2C: horizontal margin inside the floor extents that counts as "near the edge". */
+  edgeMargin: number;
+  /** x30/x34/x38: helpless-fall heights (relative to the lowest floor) for gasp category 3/2/1. */
+  recoveryHigh: number; recoveryMid: number; recoveryLow: number;
+  /** x3C: fighters below the lowest floor + blastOffset that make the whole crowd gasp. */
+  nearBlastCount: number; blastOffset: number;
 }
 export interface ItemStatusCommon {
   /** Fighter_804D6524 (x0..x98): per-attribute ftCo_CalcYScaledKnockback factors for scaled fighters. */
@@ -111,6 +146,21 @@ export interface FighterProfile {
    * (group → alternative → dobj ordinals); `hidden` lists every ordinal the game hides at
    * spawn (sets 0, 1 and 3), so only the selected alternative of each group is drawn. */
   partVisibility: { groups: number[][][]; hidden: number[] };
+  /** ftData x3C camera box (unscaled; ftCamera_80076018 multiplies by the model scale) plus the
+   * co_attrs x16C/x170 camera bone and offset (ftLib_800866DC). Absent on custom fighters. */
+  cameraBox?: FighterCameraBox;
+  /** ftData x4C → FtSFX x34: the crowd chant (ftLib_8008746C); 540000 when the fighter has none. */
+  chantSound?: number;
+}
+export interface FighterCameraBox {
+  /** x0: camera subject height above the feet. */
+  yOffset: number;
+  /** x4/x8: horizontal extents ahead of/behind the facing; xC/x10: above/below the subject. */
+  front: number; back: number; top: number; bottom: number;
+  /** x14 (target_ext.v.z): ifMagnify zooms its ortho view by this / 8. */
+  magnify: number;
+  /** Model joint of the camera bone (bone_pos), and the offset in that joint's space. */
+  joint: number; offset: V3;
 }
 export interface Floor { id: number; a: [number, number]; b: [number, number]; oneWay: boolean }
 /** Ground height of a floor segment at x, clamped to its span. Near-flat segments
@@ -134,7 +184,16 @@ export interface StageGameplayData {
   surfaces?: StageSurface[];
   blast: { left: number; right: number; top: number; bottom: number };
   spawns: [V3, V3, ...V3[]]; mainLeft: number; mainRight: number; ledges:Ledge[];
+  /** Stage_GetCamBounds*Offset: the camera range in world units (offsets applied). Absent on
+   * hand-built stages; readers fall back to STAGE_CAMERA_DEFAULT. */
+  camera?: StageCameraBounds;
+  /** grGroundParam xB8..xD8: the ifMagnify background colours (RGBA) as a 3×3 grid, row-major
+   * from top-left: ifMagnify_802FBBDC blends the four around the fighter's camera-range cell. */
+  magnifyColors?: readonly number[];
 }
+export interface StageCameraBounds { left: number; right: number; top: number; bottom: number }
+/** Ground_801C39C0 "use dummy CamRange" default when a stage has no 0x94-0x96 points (Pokémon Stadium). */
+export const STAGE_CAMERA_DEFAULT: Readonly<StageCameraBounds> = Object.freeze({ left: -170, right: 170, top: 120, bottom: -60 });
 const vec = (arc: HsdArchive, offset: number): V3 => [arc.f32(offset), arc.f32(offset + 4), arc.f32(offset + 8)];
 function finiteRange(value: number, min: number, max: number, label: string): number {
   if (!Number.isFinite(value) || value < min || value > max) throw new Error(`Unsupported gameplay ${label}: ${value}`);
@@ -182,7 +241,13 @@ export function parseCommonGameplay(arc: HsdArchive): CommonGameplayData {
       meteorAngleMin: finiteRange(arc.u32(common+0x7e8),0,361,'meteor angle min'), meteorAngleMax: finiteRange(arc.u32(common+0x7ec),0,361,'meteor angle max'), meteorLockout: finiteRange(arc.u32(common+0x7f0),0,255,'meteor cancel lockout') },
     itemInput:{smashDeadX:arc.f32(common+8),smashDeadY:arc.f32(common+12),angle:arc.f32(common+0x20),side:arc.f32(common+0x98),up:arc.f32(common+0xac),down:arc.f32(common+0xb0),smashUp:arc.f32(common+0xcc),smashDown:arc.f32(common+0xd4),upWindow:arc.f32(common+0xd0),downWindow:arc.f32(common+0xd8),airWindow:arc.u32(common+0x3fc),neutralX:arc.f32(common+0xdc),neutralY:arc.f32(common+0xe0)},
     smashInputWindow: finiteRange(arc.u32(common+0x40)+arc.f32(common+0x44),0,60,'smash input window'),
+    dashInputWindow: finiteRange(arc.u32(common+0x40),0,60,'dash input window'),
+    dashExitFriction: finiteRange(arc.f32(common+0x54),0,1,'dash exit friction'),
+    dashInitialLockout: finiteRange(arc.f32(common+0x44),0,60,'initial dash reverse lockout'),
+    dashRollWindow: finiteRange(arc.f32(common+0x48),0,60,'initial dash roll window'),
+    dashActionWindow: finiteRange(arc.f32(common+0x4c),0,60,'dash action window'),
     itemStatus: parseItemStatusCommon(arc, root, common),
+    crowd: parseCrowdConfig(arc, root),
     boneMaps: { Fe: boneMap(ORIGINAL_FIGHTERS.Fe.nativeKind), Fx: boneMap(ORIGINAL_FIGHTERS.Fx.nativeKind), Mr: boneMap(ORIGINAL_FIGHTERS.Mr.nativeKind), Kb: boneMap(ORIGINAL_FIGHTERS.Kb.nativeKind), Ss: boneMap(ORIGINAL_FIGHTERS.Ss.nativeKind), Pk: boneMap(ORIGINAL_FIGHTERS.Pk.nativeKind), Lk: boneMap(ORIGINAL_FIGHTERS.Lk.nativeKind), Cl: boneMap(ORIGINAL_FIGHTERS.Cl.nativeKind), Mt: boneMap(ORIGINAL_FIGHTERS.Mt.nativeKind), Ca: boneMap(ORIGINAL_FIGHTERS.Ca.nativeKind), Dk: boneMap(ORIGINAL_FIGHTERS.Dk.nativeKind), Pr: boneMap(ORIGINAL_FIGHTERS.Pr.nativeKind), Ns: boneMap(ORIGINAL_FIGHTERS.Ns.nativeKind), Kp: boneMap(ORIGINAL_FIGHTERS.Kp.nativeKind), Pe: boneMap(ORIGINAL_FIGHTERS.Pe.nativeKind),
       Fc: boneMap(ORIGINAL_FIGHTERS.Fc.nativeKind), Dr: boneMap(ORIGINAL_FIGHTERS.Dr.nativeKind), Gn: boneMap(ORIGINAL_FIGHTERS.Gn.nativeKind), Pc: boneMap(ORIGINAL_FIGHTERS.Pc.nativeKind), Ms: boneMap(ORIGINAL_FIGHTERS.Ms.nativeKind),
       Lg: boneMap(ORIGINAL_FIGHTERS.Lg.nativeKind), Ys: boneMap(ORIGINAL_FIGHTERS.Ys.nativeKind), Pp: boneMap(ORIGINAL_FIGHTERS.Pp.nativeKind), Zd: boneMap(ORIGINAL_FIGHTERS.Zd.nativeKind), Sk: boneMap(ORIGINAL_FIGHTERS.Sk.nativeKind), Gw: boneMap(ORIGINAL_FIGHTERS.Gw.nativeKind),
@@ -196,6 +261,20 @@ export function parseCommonGameplay(arc: HsdArchive): CommonGameplayData {
       Lc2: MODDED_BONE_TABLES.Lc2, Sm: MODDED_BONE_TABLES.Sm, Lb: MODDED_BONE_TABLES.Lb, MM: MODDED_BONE_TABLES.MM, Sd: MODDED_BONE_TABLES.Sd,
       Cn: MODDED_BONE_TABLES.Cn, Gk: boneMap(ORIGINAL_FIGHTERS.Gk.nativeKind),
       Ts: MODDED_BONE_TABLES.Ts, Bf: boneMap(ORIGINAL_FIGHTERS.Bf.nativeKind), WfU: MODDED_BONE_TABLES.Wf },
+  };
+}
+
+function parseCrowdConfig(arc: HsdArchive, root: number): CrowdConfig {
+  const config = arc.pointer(root + 21 * 4);
+  const f = (offset: number, min: number, max: number, label: string) => finiteRange(arc.f32(config + offset), min, max, `crowd ${label}`);
+  const i = (offset: number, min: number, max: number, label: string) => finiteRange(arc.u32(config + offset) | 0, min, max, `crowd ${label}`);
+  return {
+    kbLow: f(0x00, 0, 1000, 'knockback low'), kbMid: f(0x04, 0, 1000, 'knockback mid'), kbHigh: f(0x08, 0, 1000, 'knockback high'),
+    angleMin: f(0x0c, 0, Math.PI * 2, 'angle min'), angleMax: f(0x10, 0, Math.PI * 2, 'angle max'), angleMult: f(0x14, 0, 4, 'angle multiplier'),
+    comboFrames: f(0x18, 0, 7200, 'combo frames'), chantPercent: i(0x1c, 0, 999, 'chant percent'), cheerLimit: i(0x20, 0, 72000, 'cheer limit'),
+    chantInterruptAfter: i(0x24, 0, 100, 'chant interrupt'), maxChants: i(0x28, 1, 100, 'chant repeats'), edgeMargin: f(0x2c, 0, 500, 'edge margin'),
+    recoveryHigh: f(0x30, -1000, 1000, 'recovery high'), recoveryMid: f(0x34, -1000, 1000, 'recovery mid'), recoveryLow: f(0x38, -1000, 1000, 'recovery low'),
+    nearBlastCount: i(0x3c, 1, 8, 'near-blast count'), blastOffset: f(0x40, -1000, 1000, 'blast offset'),
   };
 }
 
@@ -290,8 +369,24 @@ export function parseFighterProfile(arc: HsdArchive, kind: OriginalFighterKind, 
   return { kind, name: ORIGINAL_FIGHTERS[kind].name, attributes, words, shieldBone: partJoint(bones, shieldPart, 'shield bone'),
     itemHoldBone:partJoint(bones,arc.u8(arc.pointer(root+8)+0x10),'item hold bone'),itemPickup:{ground:pickupBox(0),air:pickupBox(32)},
     ledgeSnap:{x:finiteRange(arc.f32(ecb+16),0,100,'ledge snap x'),y:finiteRange(arc.f32(ecb+20),0,100,'ledge snap y'),height:finiteRange(arc.f32(ecb+24),0,100,'ledge snap height')}, hurts, boneMap, boneCount: bones.jointCount, partJoints: [...bones.partJoints], motionRoot: boneMap[1]!,
-    partVisibility: parsePartVisibility(arc, root),
+    partVisibility: parsePartVisibility(arc, root), cameraBox: parseCameraBox(arc, root, attrs, bones), chantSound: parseChantSound(arc, root),
     nudgeOffset: arc.f32(nudge), nudgeRadius: finiteRange(arc.f32(nudge + 4), 0, 20, 'ground nudge radius'), hitSparkVariant: arc.u32(attrs + 0xa0) };
+}
+/** ftCamera_UpdateCameraBox inputs. Presentation/crowd data only, so a table the parser cannot
+ * vouch for (extension fighters' part tables) is dropped instead of failing the fighter. */
+function parseCameraBox(arc: HsdArchive, root: number, attrs: number, bones: Pick<BoneTable, 'partJoints'>): FighterCameraBox | undefined {
+  try {
+    const box = arc.pointer(root + 0x3c), values = Array.from({ length: 6 }, (_, i) => arc.f32(box + i * 4));
+    const joint = bones.partJoints[arc.u32(attrs + 0x16c)], offset = vec(arc, attrs + 0x170);
+    if (joint === undefined || joint < 0 || ![...values, ...offset].every((value) => Number.isFinite(value) && Math.abs(value) <= 200) || values[5]! <= 0) return undefined;
+    return { yOffset: values[0]!, front: values[1]!, back: values[2]!, top: values[3]!, bottom: values[4]!, magnify: values[5]!, joint, offset };
+  } catch { return undefined; }
+}
+function parseChantSound(arc: HsdArchive, root: number): number | undefined {
+  try {
+    const id = arc.u32(arc.pointer(root + 0x4c) + 0x34);
+    return id > 0 && id < 10_000_000 ? id : undefined;
+  } catch { return undefined; }
 }
 
 /** Researched world offset for one collision area whose lines are stored in an owner
@@ -401,6 +496,14 @@ export function parseStageGameplay(arc: HsdArchive, staticAreas?: readonly numbe
   const firstBlast = points.get(0x97), secondBlast = points.get(0x98), spawn0 = points.get(0), spawn1 = points.get(1);
   if (!firstBlast || !secondBlast || !spawn0 || !spawn1) throw new Error('Missing original blast zones or spawn points.');
   const blast = { left: Math.min(firstBlast[0], secondBlast[0]), right: Math.max(firstBlast[0], secondBlast[0]), bottom: Math.min(firstBlast[1], secondBlast[1]), top: Math.max(firstBlast[1], secondBlast[1]) };
+  // Ground_801C39C0: CameraLimit points 0x95/0x96 relative to the 0x94 camera origin, which
+  // Stage_GetCamBounds*Offset adds back, so absolute corners are the stored bounds.
+  const cameraA = points.get(0x95), cameraB = points.get(0x96), cameraOrigin = points.get(0x94);
+  const camera = cameraA && cameraB && cameraOrigin
+    ? { left: Math.min(cameraA[0], cameraB[0]), right: Math.max(cameraA[0], cameraB[0]), bottom: Math.min(cameraA[1], cameraB[1]), top: Math.max(cameraA[1], cameraB[1]) }
+    : { ...STAGE_CAMERA_DEFAULT };
+  const groundParam = arc.symbol('grGroundParam');
+  const magnifyColors = Array.from({ length: 9 }, (_, index) => arc.u32(groundParam + 0xb8 + index * 4));
   const solid = floors.filter((floor) => !floor.oneWay);
   const ledges:Ledge[]=[];
   for(const floor of solid) {
@@ -413,5 +516,5 @@ export function parseStageGameplay(arc: HsdArchive, staticAreas?: readonly numbe
       ledges.push({id:floor.id*2+side,floor:floor.id,x:point[0],y:point[1],facing:point[0]<=Math.min(floor.a[0],floor.b[0])?1:-1});
     }
   }
-  return { scale, floors, surfaces, ledges, blast, spawns: [spawn0, spawn1, ...[2, 3].flatMap(id => { const point = points.get(id); return point ? [point] : []; })], mainLeft: Math.min(...solid.flatMap((floor) => [floor.a[0], floor.b[0]])), mainRight: Math.max(...solid.flatMap((floor) => [floor.a[0], floor.b[0]])) };
+  return { scale, floors, surfaces, ledges, blast, camera, magnifyColors, spawns: [spawn0, spawn1, ...[2, 3].flatMap(id => { const point = points.get(id); return point ? [point] : []; })], mainLeft: Math.min(...solid.flatMap((floor) => [floor.a[0], floor.b[0]])), mainRight: Math.max(...solid.flatMap((floor) => [floor.a[0], floor.b[0]])) };
 }

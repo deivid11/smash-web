@@ -25,7 +25,7 @@ import { needleOffsets } from './seak-data.ts';
 import { stepSeakWhip, type SeakWhipRuntime } from './seak-projectiles.ts';
 import { stepPopoIce } from './popo-projectiles.ts';
 import { linkArticle, linkSpawnPoint, initializeLinkProjectile, advanceLinkProjectile, returnLinkBoomerang, damageLinkBomb, linkBombContact, stickLinkArrow, type LinkProjectile, type LinkProjectileRuntime } from './link-projectiles.ts';
-import type { ShotIntent } from './specials.ts';
+import type { CustomShotIntent, ShotIntent } from './specials.ts';
 import { royCounter } from './roy.ts';
 import { shieldBubble } from './combat.ts';
 import { HurtboxCache, hurtSweepCandidate } from './hurt-cache.ts';
@@ -39,7 +39,10 @@ export interface Projectile { id:number;kind:ProjectileKind;owner:number;x:numbe
   /** Diddy's banana item (lib/game/diddy-projectiles.ts). */
   banana?:DiddyBananaRuntime;
   /** Tails' shot (PlTs itFunction:0): landed and sliding (item state 0) vs airborne (state 1), shield bounces. */
-  tails?:{grounded:boolean;shieldHits:number} }
+  tails?:{grounded:boolean;shieldHits:number};
+  /** Custom-pack shot (kind 'custom-shot'): contacts left, re-arm delay/timer, the pack's visual
+   * style id and the last-contact override. Not an original article behavior. */
+  custom?:{hits:number;rehit:number;timer:number;style:number;final?:CustomShotIntent['final']} }
 /** Article keys: a fighter kind for its own projectile, or `<kind>/copy/<source>` for a copied one. */
 export interface ProjectileState { serial: number; items: Array<Omit<Projectile, 'data'> & {article: string}> }
 /** Contact data must survive article transitions before LocalMatch applies it. */
@@ -293,6 +296,19 @@ export class ProjectileWorld {
       if(this.items.length>=32)this.items.shift();this.items.push(item);
       return item;
     }
+    if(kind==='custom-shot'){
+      // Custom packs fire their own authored article with explicit per-shot tuning; nothing
+      // here borrows another fighter's projectile behavior or renderer.
+      const tune=intent?.custom,data=f.content.specials.articles.projectile;
+      if(f.content.specials.parameters.kind!=='custom'||!tune||!data?.hit)throw new Error('Only a custom fighter fires a custom shot.');
+      const at=intent?.at??[f.x,f.y],h=tune.hit;
+      const item:Projectile={id:++this.serial,kind,owner:f.slot,x:Math.fround(at[0]),y:Math.fround(at[1]),vx:Math.fround(Math.cos(tune.angle)*tune.speed*f.facing),vy:Math.fround(Math.sin(tune.angle)*tune.speed),age:0,life:Math.ceil(tune.life),data,
+        hit:{...data.hit,damage:h.damage,angle:h.angle,growth:h.growth,base:h.base,weightSet:h.weightSet,radius:h.radius,element:h.element,soundKind:h.soundKind,soundSeverity:h.soundSeverity,...(h.shieldDamage?{shieldDamage:h.shieldDamage}:{})},
+        reflectionCooldown:0,victims:new Set(),speed:0,custom:{hits:Math.max(1,Math.floor(tune.hits)),rehit:Math.max(1,Math.floor(tune.rehit)),timer:0,style:tune.style,...(tune.final?{final:{...tune.final}}:{})}};
+      if(item.custom!.hits===1&&item.custom!.final)this.finalCustomContact(item);
+      if(this.items.length>=32)this.items.shift();this.items.push(item);
+      return item;
+    }
     if(kind==='chunli-kiko'){
       const p=f.content.specials.parameters;
       if(p.kind!=='Cn')throw new Error('Only Chun-Li throws Kikokens.');
@@ -498,6 +514,8 @@ export class ProjectileWorld {
     for(const item of [...this.items]){
       if(item.pikachu && item.pikachu.delay>0){item.pikachu.delay--;continue;}
       item.age++;item.life--;item.reflectionCooldown=Math.max(0,item.reflectionCooldown-1);
+      // A multi-contact custom shot re-arms against the fighters it already touched.
+      if(item.custom&&item.custom.timer>0&&--item.custom.timer===0)item.victims.clear();
       if(item.life<=0&&!item.link&&!item.ness&&!item.sonicSpring){if(item.kind==='bomb'&&!item.exploded)this.explodeBomb(item);else {finishPikachuProjectile(item,fighters);this.remove(item);continue;}}
       const facing=Math.sign(item.vx)||1;
       // itKirbyCutterBeam: the hit capsule sits above/behind the beam origin along its facing.
@@ -626,7 +644,7 @@ export class ProjectileWorld {
         // Tails' shot lands without bouncing (Item_SetGrounded → state 0) and keeps sliding.
         if(floor&&item.tails){item.y=Math.fround(floorY(floor,item.x));item.vy=0;item.tails.grounded=true;end=[item.x,item.y,0];}
         else if(floor){
-          if(['laser','charge','missile','super-missile','shadow-ball','disable','toad-spore','buster','buster-charged','wolf-laser','metal-shot','fay-laser','fay-sniper','chunli-kiko'].includes(item.kind)){this.remove(item);continue;}
+          if(['laser','charge','missile','super-missile','shadow-ball','disable','toad-spore','buster','buster-charged','wolf-laser','metal-shot','fay-laser','fay-sniper','chunli-kiko','custom-shot'].includes(item.kind)){this.remove(item);continue;}
           if(item.kind==='pk-fire'){this.spawnNessPillar(item,events);this.remove(item);continue;}
           if(item.kind==='pk-flash'&&!(item as NessProjectile).ness.exploding){item.y=Math.fround(floorY(floor,item.x)+1);item.vx=0;item.vy=0;explodeNessFlash(item as NessProjectile,nessArticles(this.content));notifyBallGone(fighters[(item as NessProjectile).ness.sourceOwner],item as NessProjectile);end=[item.x,item.y,0];}
           else if(item.kind==='pk-flash'||item.kind==='pk-fire-pillar'){item.vx=0;item.vy=0;end=[item.x,item.y,0];}
@@ -658,7 +676,7 @@ export class ProjectileWorld {
       for(const fighter of fighters){
         if(item.kind==='thunder'||linkBlast||fighter.slot===item.owner||fighter.state==='ko'||item.reflectionCooldown)continue;
         const absorb=nessAbsorber(fighter);
-        if(absorb&&['tjolt','laser','fireball','charge','shadow-ball','pk-fire','pk-flash','koopa-flame','buster','buster-charged','iceball','raichu-jolt','lizardon-flame','wolf-laser','diddy-peanut','dedede-gordo','blastoise-water','blastoise-spray','lucas-freeze','lucas-fire','metal-shot','ninten-pellet','fay-laser','fay-sniper','chunli-kiko','dins-fire'].includes(item.kind)){
+        if(absorb&&['tjolt','laser','fireball','charge','shadow-ball','pk-fire','pk-flash','koopa-flame','buster','buster-charged','iceball','raichu-jolt','lizardon-flame','wolf-laser','diddy-peanut','dedede-gordo','blastoise-water','blastoise-spray','lucas-freeze','lucas-fire','metal-shot','ninten-pellet','fay-laser','fay-sniper','chunli-kiko','dins-fire','custom-shot'].includes(item.kind)){
           const center=poses.point(fighter,absorb.bone,absorb.offset);
           if(pointSegmentDistanceSquared(center,previous,end)<=(absorb.radius+Math.max(1,item.hit.radius))**2){
             const damage=item.kind==='pk-flash'?Math.trunc((item as NessProjectile).ness.charge*nessArticles(this.content).explosion.damagePerCharge+nessArticles(this.content).explosion.baseDamage):item.hit.damage;
@@ -670,7 +688,7 @@ export class ProjectileWorld {
         // Oil Panic bucket shares the energy-kind table; absorbed hits charge
         // it (count + damage) and pose the Catch instead of healing.
         const bucket=gamewatchAbsorber(fighter);
-        if(bucket&&['tjolt','laser','fireball','charge','shadow-ball','pk-fire','pk-flash','koopa-flame','buster','buster-charged','iceball','raichu-jolt','lizardon-flame','wolf-laser','diddy-peanut','dedede-gordo','blastoise-water','blastoise-spray','lucas-freeze','lucas-fire','metal-shot','ninten-pellet','fay-laser','fay-sniper','chunli-kiko','dins-fire'].includes(item.kind)){
+        if(bucket&&['tjolt','laser','fireball','charge','shadow-ball','pk-fire','pk-flash','koopa-flame','buster','buster-charged','iceball','raichu-jolt','lizardon-flame','wolf-laser','diddy-peanut','dedede-gordo','blastoise-water','blastoise-spray','lucas-freeze','lucas-fire','metal-shot','ninten-pellet','fay-laser','fay-sniper','chunli-kiko','dins-fire','custom-shot'].includes(item.kind)){
           const center=poses.point(fighter,bucket.bone,bucket.offset);
           if(pointSegmentDistanceSquared(center,previous,end)<=(bucket.radius+Math.max(1,item.hit.radius))**2){
             fighter.gwOil++;fighter.gwOilDamage=Math.fround(fighter.gwOilDamage+item.hit.damage);
@@ -742,6 +760,7 @@ export class ProjectileWorld {
           else if(item.kind==='pk-fire'){this.spawnNessPillar(item,events);this.remove(item);}
           else if(item.kind==='pk-thunder'){notifyBallGone(fighters[(item as NessProjectile).ness.sourceOwner],item as NessProjectile);this.remove(item);}
           // PlLz flame OnShieldHit returns false (it burns on); the rock burst's returns true.
+          else if(item.custom)this.customContact(item);
           else if(item.kind!=='bomb'&&item.kind!=='thunder'&&item.kind!=='pk-fire-pillar'&&item.kind!=='pk-flash'&&item.kind!=='lizardon-flame')this.remove(item);break;
         }
         const worldHurts=hurtCache.get(victim);
@@ -762,6 +781,7 @@ export class ProjectileWorld {
             // itKoopaFlame_Logic111_DmgDealt returns false: a flame keeps going through whoever it
             // burns (it just never hits the same fighter twice), unlike every article below.
             // PlTs itFunction:0 OnGiveDamage is a bare blr: r3 still holds the item, so it is destroyed.
+            else if(item.custom)this.customContact(item);
             else if(['tails-shot','tjolt','fireball','charge','missile','super-missile','arrow','shadow-ball','disable','turnip','toad-spore','peach-blast','buster','buster-charged','iceball','raichu-jolt','wolf-laser','diddy-peanut','dedede-gordo','blastoise-water','blastoise-spray','lucas-freeze','lucas-fire','metal-shot','ninten-pellet','fay-laser','fay-sniper','chunli-kiko','needles'].includes(item.kind))this.remove(item);
             break;
           }
@@ -926,6 +946,18 @@ export class ProjectileWorld {
     const data=this.content.roster.get('Ss')?.specials.articles.samus?.explosion;
     if(!data?.hit)throw Error('Samus bomb explosion is missing.');
     item.data=data;item.hit={...data.hit};item.life=Math.ceil(data.lifetime);item.age=0;item.vx=0;item.vy=0;item.exploded=true;item.victims.clear();
+  }
+  /** One contact spent: the shot dies on its last, otherwise waits `rehit` frames to re-arm. */
+  private customContact(item:Projectile):void {
+    const c=item.custom!;
+    if(--c.hits<=0){this.remove(item);return;}
+    c.timer=c.rehit;
+    if(c.hits===1&&c.final)this.finalCustomContact(item);
+  }
+  private finalCustomContact(item:Projectile):void {
+    const last=item.custom!.final!;
+    item.hit={...item.hit,damage:last.damage,angle:last.angle,growth:last.growth,base:last.base,weightSet:last.weightSet,element:last.element};
+    delete item.custom!.final;
   }
   consume(id:number):void{const item=this.items.find(p=>p.id===id);if(item)this.remove(item);}
   private remove(item:Projectile):void {const index=this.items.indexOf(item);if(index>=0)this.items.splice(index,1);}
